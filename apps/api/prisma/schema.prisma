@@ -345,6 +345,8 @@ model LevelConfig {
   roleRewards           Json     @default("[]")
   // JSON: array of role IDs whose members don't earn XP.
   noXpRoleIds           Json     @default("[]")
+  // When true, /rank attaches a rendered PNG card instead of an embed.
+  rankCardEnabled       Boolean  @default(false)
   updatedAt             DateTime @updatedAt
 
   guild                 Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
@@ -553,6 +555,10 @@ model WelcomeConfig {
   // Announce milestones (e.g. every 100 members). null disables.
   milestoneEvery     Int?
   milestoneTemplate  String?
+  // When true, the join message includes a rendered welcome card (PNG).
+  cardEnabled        Boolean  @default(false)
+  // Optional background image URL (fetched by the bot at render time).
+  cardBackgroundUrl  String?
   updatedAt          DateTime @updatedAt
 
   guild              Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)

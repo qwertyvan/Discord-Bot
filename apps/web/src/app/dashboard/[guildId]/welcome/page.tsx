@@ -25,6 +25,8 @@ export default async function WelcomePage({
       .split(/[\s,]+/)
       .map((s) => s.trim())
       .filter(Boolean);
+    const cardEnabled = formData.get('cardEnabled') === 'on';
+    const cardBackgroundUrl = String(formData.get('cardBackgroundUrl') ?? '').trim() || null;
 
     await serverFetch(`/admin/guilds/${gid}/welcome`, {
       method: 'PUT',
@@ -37,6 +39,8 @@ export default async function WelcomePage({
         autoRoleIds,
         milestoneEvery,
         milestoneTemplate,
+        cardEnabled,
+        cardBackgroundUrl,
       },
     });
     revalidatePath(`/dashboard/${gid}`, 'layout');
@@ -118,6 +122,30 @@ export default async function WelcomePage({
           textarea
         />
       </div>
+
+      <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            name="cardEnabled"
+            defaultChecked={config.cardEnabled}
+            className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-discord"
+          />
+          <span className="text-sm font-medium">Attach a rendered welcome card (PNG) to join messages</span>
+        </label>
+        <p className="mt-2 text-xs text-slate-500">
+          Renders the new member&apos;s avatar over a configurable background with their display name
+          and the guild&apos;s member count.
+        </p>
+      </div>
+
+      <Field
+        label="Welcome card background URL"
+        name="cardBackgroundUrl"
+        defaultValue={config.cardBackgroundUrl ?? ''}
+        placeholder="https://example.com/banner.jpg"
+        help="Optional. If unreachable, the card falls back to a gradient."
+      />
 
       <button
         type="submit"

@@ -17,6 +17,8 @@ function serialize(guildId: string, cfg: PrismaWelcomeConfig | null) {
     autoRoleIds: (cfg?.autoRoleIds as string[]) ?? [],
     milestoneEvery: cfg?.milestoneEvery ?? null,
     milestoneTemplate: cfg?.milestoneTemplate ?? null,
+    cardEnabled: cfg?.cardEnabled ?? false,
+    cardBackgroundUrl: cfg?.cardBackgroundUrl ?? null,
   };
 }
 
@@ -49,6 +51,8 @@ export const welcomeRoutes: FastifyPluginAsyncZod = async (app) => {
       if (patch.autoRoleIds !== undefined) update.autoRoleIds = patch.autoRoleIds;
       if (patch.milestoneEvery !== undefined) update.milestoneEvery = patch.milestoneEvery;
       if (patch.milestoneTemplate !== undefined) update.milestoneTemplate = patch.milestoneTemplate;
+      if (patch.cardEnabled !== undefined) update.cardEnabled = patch.cardEnabled;
+      if (patch.cardBackgroundUrl !== undefined) update.cardBackgroundUrl = patch.cardBackgroundUrl;
 
       const config = await app.prisma.welcomeConfig.upsert({
         where: { guildId },
@@ -63,6 +67,8 @@ export const welcomeRoutes: FastifyPluginAsyncZod = async (app) => {
           autoRoleIds: patch.autoRoleIds ?? [],
           milestoneEvery: patch.milestoneEvery ?? null,
           milestoneTemplate: patch.milestoneTemplate ?? null,
+          cardEnabled: patch.cardEnabled ?? false,
+          cardBackgroundUrl: patch.cardBackgroundUrl ?? null,
         },
       });
       return serialize(guildId, config);

@@ -1,7 +1,16 @@
-import { ChannelType, Events, type Client, type Guild, type GuildMember, type TextChannel } from 'discord.js';
+import {
+  AttachmentBuilder,
+  ChannelType,
+  Events,
+  type Client,
+  type Guild,
+  type GuildMember,
+  type TextChannel,
+} from 'discord.js';
 import { log } from '../logger.js';
 import { api, ApiError } from '../api-client.js';
 import { renderTemplate } from '../welcome/template.js';
+import { renderWelcomeCard } from '../util/canvas/welcome-card.js';
 
 export function registerWelcomeEvents(client: Client): void {
   client.on(Events.GuildMemberAdd, async (member) => {
@@ -16,12 +25,30 @@ export function registerWelcomeEvents(client: Client): void {
           member,
           guild: member.guild,
         });
+        const files = [];
+        if (config.cardEnabled) {
+          try {
+            const png = await renderWelcomeCard({
+              username: member.displayName,
+              avatarUrl: member.user.displayAvatarURL({ size: 256, extension: 'png' }),
+              serverName: member.guild.name,
+              memberCount: member.guild.memberCount,
+              backgroundUrl: config.cardBackgroundUrl,
+            });
+            files.push(new AttachmentBuilder(png, { name: 'welcome.png' }));
+          } catch (err) {
+            log.warn('Welcome card render failed', {
+              guildId: member.guild.id,
+              err: String(err),
+            });
+          }
+        }
         // allowedMentions limits pings to the joining user — load-bearing for
         // the {username} placeholder, which renders literal text from the
         // user's display name and could otherwise become an @everyone if
         // allowedMentions were relaxed.
         await channel
-          .send({ content: message, allowedMentions: { users: [member.id] } })
+          .send({ content: message, files, allowedMentions: { users: [member.id] } })
           .catch((err) => {
             log.warn('Failed to send welcome message', { guildId: member.guild.id, err: String(err) });
           });

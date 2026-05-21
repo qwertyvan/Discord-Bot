@@ -23,6 +23,7 @@ interface SerializableConfig {
   channelMultipliers: unknown;
   roleRewards: unknown;
   noXpRoleIds: unknown;
+  rankCardEnabled?: boolean;
 }
 
 function serializeConfig(guildId: string, cfg: SerializableConfig | null) {
@@ -37,6 +38,7 @@ function serializeConfig(guildId: string, cfg: SerializableConfig | null) {
     channelMultipliers: (cfg?.channelMultipliers as Record<string, number>) ?? {},
     roleRewards: (cfg?.roleRewards as Array<{ level: number; roleId: string }>) ?? [],
     noXpRoleIds: (cfg?.noXpRoleIds as string[]) ?? [],
+    rankCardEnabled: cfg?.rankCardEnabled ?? false,
   };
 }
 
@@ -73,6 +75,7 @@ export const levelingRoutes: FastifyPluginAsyncZod = async (app) => {
         'channelMultipliers',
         'roleRewards',
         'noXpRoleIds',
+        'rankCardEnabled',
       ] as const) {
         const v = (patch as Record<string, unknown>)[k];
         if (v !== undefined) update[k] = v;
@@ -92,6 +95,7 @@ export const levelingRoutes: FastifyPluginAsyncZod = async (app) => {
           channelMultipliers: (patch.channelMultipliers ?? {}) as Prisma.InputJsonValue,
           roleRewards: (patch.roleRewards ?? []) as Prisma.InputJsonValue,
           noXpRoleIds: (patch.noXpRoleIds ?? []) as Prisma.InputJsonValue,
+          rankCardEnabled: patch.rankCardEnabled ?? false,
         },
       });
       return serializeConfig(guildId, cfg);

@@ -19,6 +19,7 @@ export const LevelConfigSchema = z.object({
   channelMultipliers: z.record(SnowflakeSchema, z.number().min(0).max(10)),
   roleRewards: z.array(LevelRoleRewardSchema),
   noXpRoleIds: z.array(SnowflakeSchema),
+  rankCardEnabled: z.boolean(),
 });
 
 export type LevelConfig = z.infer<typeof LevelConfigSchema>;
