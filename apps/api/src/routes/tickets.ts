@@ -27,6 +27,9 @@ function serializeConfig(guildId: string, cfg: PrismaTicketConfig | null) {
     staffRoleId: cfg?.staffRoleId ?? null,
     defaultSlaSeconds: cfg?.defaultSlaSeconds ?? null,
     transcriptChannelId: cfg?.transcriptChannelId ?? null,
+    slaReminderSeconds: cfg?.slaReminderSeconds ?? null,
+    idleAutoCloseSeconds: cfg?.idleAutoCloseSeconds ?? null,
+    transcriptsEnabled: cfg?.transcriptsEnabled ?? false,
   };
 }
 
@@ -58,6 +61,8 @@ function serializeTicket(t: PrismaTicket) {
     closedAt: t.closedAt?.toISOString() ?? null,
     closedBy: t.closedBy,
     closeReason: t.closeReason,
+    lastActivityAt: t.lastActivityAt?.toISOString() ?? null,
+    slaReminderAt: t.slaReminderAt?.toISOString() ?? null,
   };
 }
 
@@ -92,6 +97,9 @@ export const ticketsRoutes: FastifyPluginAsyncZod = async (app) => {
         'staffRoleId',
         'defaultSlaSeconds',
         'transcriptChannelId',
+        'slaReminderSeconds',
+        'idleAutoCloseSeconds',
+        'transcriptsEnabled',
       ] as const) {
         const v = (patch as Record<string, unknown>)[k];
         if (v !== undefined) update[k] = v;
@@ -107,6 +115,9 @@ export const ticketsRoutes: FastifyPluginAsyncZod = async (app) => {
           staffRoleId: patch.staffRoleId ?? null,
           defaultSlaSeconds: patch.defaultSlaSeconds ?? null,
           transcriptChannelId: patch.transcriptChannelId ?? null,
+          slaReminderSeconds: patch.slaReminderSeconds ?? null,
+          idleAutoCloseSeconds: patch.idleAutoCloseSeconds ?? null,
+          transcriptsEnabled: patch.transcriptsEnabled ?? false,
         },
       });
       return serializeConfig(guildId, cfg);
@@ -281,6 +292,153 @@ export const ticketsRoutes: FastifyPluginAsyncZod = async (app) => {
       });
       if (!t) throw HttpError.notFound('No ticket for this channel.');
       return serializeTicket(t);
+    },
+  );
+
+  // Bot bumps activity when a non-bot message hits a ticket thread.
+  app.post(
+    '/guilds/:guildId/tickets/by-channel/:channelId/activity',
+    {
+      preHandler: app.requireBot(),
+      schema: { params: z.object({ guildId: SnowflakeSchema, channelId: SnowflakeSchema }) },
+    },
+    async (req, reply) => {
+      const updated = await app.prisma.ticket.updateMany({
+        where: { guildId: req.params.guildId, channelId: req.params.channelId, status: 'open' },
+        data: { lastActivityAt: new Date() },
+      });
+      return reply.code(updated.count > 0 ? 204 : 404).send();
+    },
+  );
+
+  // SLA + auto-close lifecycle — bot drains both.
+  app.get(
+    '/tickets/sla-due',
+    {
+      preHandler: app.requireBot(),
+      schema: { querystring: z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }) },
+    },
+    async (req) => {
+      // Pull all configs with SLA set, plus their open tickets — we filter in JS.
+      const configs = await app.prisma.ticketConfig.findMany({
+        where: { enabled: true, slaReminderSeconds: { not: null } },
+      });
+      const guildIds = configs.map((c) => c.guildId);
+      if (guildIds.length === 0) return { tickets: [] };
+      const tickets = await app.prisma.ticket.findMany({
+        where: { status: 'open', guildId: { in: guildIds } },
+        take: req.query.limit,
+      });
+      const byGuild = new Map(configs.map((c) => [c.guildId, c]));
+      const now = Date.now();
+      const due = tickets.filter((t) => {
+        const cfg = byGuild.get(t.guildId);
+        if (!cfg?.slaReminderSeconds) return false;
+        const last = t.lastActivityAt?.getTime() ?? t.openedAt.getTime();
+        if (now - last < cfg.slaReminderSeconds * 1000) return false;
+        // If we already reminded after the latest activity, skip.
+        if (t.slaReminderAt && t.slaReminderAt.getTime() >= last) return false;
+        return true;
+      });
+      return {
+        tickets: due.map((t) => ({
+          ...serializeTicket(t),
+          staffRoleId: byGuild.get(t.guildId)!.staffRoleId,
+        })),
+      };
+    },
+  );
+
+  app.post(
+    '/tickets/:ticketId/sla-reminder-sent',
+    {
+      preHandler: app.requireBot(),
+      schema: { params: z.object({ ticketId: z.string().uuid() }) },
+    },
+    async (req, reply) => {
+      await app.prisma.ticket.updateMany({
+        where: { id: req.params.ticketId },
+        data: { slaReminderAt: new Date() },
+      });
+      return reply.code(204).send();
+    },
+  );
+
+  app.get(
+    '/tickets/idle-due',
+    {
+      preHandler: app.requireBot(),
+      schema: { querystring: z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }) },
+    },
+    async (req) => {
+      const configs = await app.prisma.ticketConfig.findMany({
+        where: { enabled: true, idleAutoCloseSeconds: { not: null } },
+      });
+      const guildIds = configs.map((c) => c.guildId);
+      if (guildIds.length === 0) return { tickets: [] };
+      const tickets = await app.prisma.ticket.findMany({
+        where: { status: 'open', guildId: { in: guildIds } },
+        take: req.query.limit,
+      });
+      const byGuild = new Map(configs.map((c) => [c.guildId, c]));
+      const now = Date.now();
+      const due = tickets.filter((t) => {
+        const cfg = byGuild.get(t.guildId);
+        if (!cfg?.idleAutoCloseSeconds) return false;
+        const last = t.lastActivityAt?.getTime() ?? t.openedAt.getTime();
+        return now - last >= cfg.idleAutoCloseSeconds * 1000;
+      });
+      return {
+        tickets: due.map((t) => ({
+          ...serializeTicket(t),
+          transcriptsEnabled: byGuild.get(t.guildId)!.transcriptsEnabled,
+          transcriptChannelId: byGuild.get(t.guildId)!.transcriptChannelId,
+        })),
+      };
+    },
+  );
+
+  // Stats: counts + avg resolution time.
+  app.get(
+    '/guilds/:guildId/tickets/stats',
+    {
+      preHandler: app.requireBot(),
+      schema: { params: z.object({ guildId: SnowflakeSchema }) },
+    },
+    async (req) => {
+      const { guildId } = req.params;
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
+      const [open, closed, openedLast7d, closedLast7d] = await Promise.all([
+        app.prisma.ticket.count({ where: { guildId, status: 'open' } }),
+        app.prisma.ticket.count({ where: { guildId, status: 'closed' } }),
+        app.prisma.ticket.count({ where: { guildId, openedAt: { gte: sevenDaysAgo } } }),
+        app.prisma.ticket.count({
+          where: { guildId, status: 'closed', closedAt: { gte: sevenDaysAgo } },
+        }),
+      ]);
+
+      const closedTickets = await app.prisma.ticket.findMany({
+        where: { guildId, status: 'closed', closedAt: { not: null } },
+        orderBy: { closedAt: 'desc' },
+        take: 100,
+        select: { openedAt: true, closedAt: true },
+      });
+      let avgResolutionSec = 0;
+      if (closedTickets.length > 0) {
+        const total = closedTickets.reduce(
+          (s, t) => s + (t.closedAt!.getTime() - t.openedAt.getTime()),
+          0,
+        );
+        avgResolutionSec = Math.round(total / closedTickets.length / 1000);
+      }
+      return {
+        guildId,
+        openCount: open,
+        closedCount: closed,
+        openedLast7d,
+        closedLast7d,
+        avgResolutionSeconds: avgResolutionSec,
+      };
     },
   );
 };

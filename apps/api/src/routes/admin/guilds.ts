@@ -945,6 +945,46 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  app.get(
+    '/admin/guilds/:guildId/tickets/stats',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
+      const [open, closed, openedLast7d, closedLast7d] = await Promise.all([
+        app.prisma.ticket.count({ where: { guildId, status: 'open' } }),
+        app.prisma.ticket.count({ where: { guildId, status: 'closed' } }),
+        app.prisma.ticket.count({ where: { guildId, openedAt: { gte: sevenDaysAgo } } }),
+        app.prisma.ticket.count({
+          where: { guildId, status: 'closed', closedAt: { gte: sevenDaysAgo } },
+        }),
+      ]);
+      const recent = await app.prisma.ticket.findMany({
+        where: { guildId, status: 'closed', closedAt: { not: null } },
+        orderBy: { closedAt: 'desc' },
+        take: 100,
+        select: { openedAt: true, closedAt: true },
+      });
+      let avg = 0;
+      if (recent.length > 0) {
+        const total = recent.reduce(
+          (s, t) => s + (t.closedAt!.getTime() - t.openedAt.getTime()),
+          0,
+        );
+        avg = Math.round(total / recent.length / 1000);
+      }
+      return {
+        guildId,
+        openCount: open,
+        closedCount: closed,
+        openedLast7d,
+        closedLast7d,
+        avgResolutionSeconds: avg,
+      };
+    },
+  );
+
   // ─── Stats ────────────────────────────────────────────────────────────
   app.get(
     '/admin/guilds/:guildId/stats/mod-actions-trend',

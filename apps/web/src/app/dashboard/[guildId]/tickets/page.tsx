@@ -29,6 +29,9 @@ export default async function TicketsPage({
       panelChannelId: String(formData.get('panelChannelId') ?? '').trim() || null,
       staffRoleId: String(formData.get('staffRoleId') ?? '').trim() || null,
       transcriptChannelId: String(formData.get('transcriptChannelId') ?? '').trim() || null,
+      transcriptsEnabled: formData.get('transcriptsEnabled') === 'on',
+      slaReminderSeconds: parseNullableInt(String(formData.get('slaReminderSeconds') ?? '')),
+      idleAutoCloseSeconds: parseNullableInt(String(formData.get('idleAutoCloseSeconds') ?? '')),
     };
     await serverFetch(`/admin/guilds/${gid}/ticket-config`, { method: 'PUT', body });
     revalidatePath(`/dashboard/${gid}`, 'layout');
@@ -69,6 +72,40 @@ export default async function TicketsPage({
             defaultValue={cfg.transcriptChannelId ?? ''}
           />
         </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              name="transcriptsEnabled"
+              defaultChecked={cfg.transcriptsEnabled}
+              className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-discord"
+            />
+            <span className="text-sm font-medium">Generate HTML transcripts on close</span>
+          </label>
+          <p className="mt-2 text-xs text-slate-500">
+            Renders the ticket-thread history as a stand-alone HTML file and
+            posts it to the transcript channel (or the ticket thread if not set).
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="SLA reminder after (seconds)"
+            name="slaReminderSeconds"
+            type="number"
+            defaultValue={cfg.slaReminderSeconds !== null ? String(cfg.slaReminderSeconds) : ''}
+          />
+          <Field
+            label="Auto-close idle after (seconds)"
+            name="idleAutoCloseSeconds"
+            type="number"
+            defaultValue={
+              cfg.idleAutoCloseSeconds !== null ? String(cfg.idleAutoCloseSeconds) : ''
+            }
+          />
+        </div>
+
         <button
           type="submit"
           className="rounded-lg bg-discord px-4 py-2 text-sm font-medium text-white hover:bg-discord-dark"
@@ -76,6 +113,13 @@ export default async function TicketsPage({
           Save
         </button>
       </form>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Stats
+        </h2>
+        <StatGrid guildId={guildId} />
+      </section>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-300">
@@ -164,19 +208,68 @@ function Field({
   label,
   name,
   defaultValue,
+  type = 'text',
 }: {
   label: string;
   name: string;
   defaultValue: string;
+  type?: 'text' | 'number';
 }) {
   return (
     <div>
       <label className="block text-xs uppercase tracking-wide text-slate-400">{label}</label>
       <input
+        type={type}
         name={name}
         defaultValue={defaultValue}
-        className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs"
+        className={`mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 ${type === 'number' ? 'text-sm' : 'font-mono text-xs'}`}
       />
+    </div>
+  );
+}
+
+function parseNullableInt(s: string): number | null {
+  const trimmed = s.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+async function StatGrid({ guildId }: { guildId: string }) {
+  const stats = await serverFetch<{
+    openCount: number;
+    closedCount: number;
+    openedLast7d: number;
+    closedLast7d: number;
+    avgResolutionSeconds: number;
+  }>(`/admin/guilds/${guildId}/tickets/stats`);
+  const avg = stats.avgResolutionSeconds;
+  const avgLabel =
+    avg === 0
+      ? '—'
+      : avg < 60
+        ? `${avg}s`
+        : avg < 3600
+          ? `${Math.round(avg / 60)}m`
+          : avg < 86400
+            ? `${(avg / 3600).toFixed(1)}h`
+            : `${(avg / 86400).toFixed(1)}d`;
+  return (
+    <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <Stat label="Open" value={stats.openCount} />
+      <Stat label="Closed" value={stats.closedCount} />
+      <Stat label="Opened (7d)" value={stats.openedLast7d} />
+      <Stat label="Closed (7d)" value={stats.closedLast7d} />
+      <Stat label="Avg time-to-close" value={avgLabel} />
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-xl font-semibold text-slate-100">{value}</div>
     </div>
   );
 }
