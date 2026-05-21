@@ -33,7 +33,64 @@ model Guild {
   balances             Balance[]
   shopItems            ShopItem[]
   inventoryEntries     InventoryEntry[]
+  ticketConfig         TicketConfig?
+  ticketCategories     TicketCategory[]
+  tickets              Ticket[]
   caseCounter          CaseCounter?
+}
+
+model TicketConfig {
+  guildId             String   @id
+  enabled             Boolean  @default(false)
+  panelChannelId      String?
+  panelMessageId      String?
+  staffRoleId         String?
+  defaultSlaSeconds   Int?
+  transcriptChannelId String?
+  updatedAt           DateTime @updatedAt
+
+  guild               Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model TicketCategory {
+  id           String   @id @default(uuid())
+  guildId      String
+  name         String   @db.VarChar(80)
+  description  String?  @db.VarChar(300)
+  emoji        String?  @db.VarChar(64)
+  staffRoleId  String?
+  slaSeconds   Int?
+  position     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  tickets      Ticket[]
+
+  @@unique([guildId, name])
+  @@index([guildId, position])
+}
+
+model Ticket {
+  id           String           @id @default(uuid())
+  guildId      String
+  categoryId   String?
+  userId       String
+  channelId    String
+  number       Int
+  status       String           @default("open") @db.VarChar(16)
+  subject      String?          @db.VarChar(200)
+  assignedTo   String?
+  openedAt     DateTime         @default(now())
+  closedAt     DateTime?
+  closedBy     String?
+  closeReason  String?          @db.VarChar(500)
+
+  guild        Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  category     TicketCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@unique([guildId, number])
+  @@index([guildId, status, openedAt])
+  @@index([guildId, userId, openedAt])
 }
 
 model EconomyConfig {

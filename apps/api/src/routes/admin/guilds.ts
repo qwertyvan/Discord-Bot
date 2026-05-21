@@ -10,6 +10,7 @@ import {
   UpdateEconomyConfigSchema,
   UpdateLevelConfigSchema,
   UpdateLoggingConfigSchema,
+  UpdateTicketConfigSchema,
   UpdateVerificationConfigSchema,
   UpdateWarningPolicySchema,
   UpdateWelcomeConfigSchema,
@@ -794,6 +795,131 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
           roleId: i.roleId,
           stock: i.stock,
           createdAt: i.createdAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  // ─── Tickets ──────────────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/ticket-config',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const cfg = await app.prisma.ticketConfig.findUnique({ where: { guildId } });
+      return {
+        guildId,
+        enabled: cfg?.enabled ?? false,
+        panelChannelId: cfg?.panelChannelId ?? null,
+        panelMessageId: cfg?.panelMessageId ?? null,
+        staffRoleId: cfg?.staffRoleId ?? null,
+        defaultSlaSeconds: cfg?.defaultSlaSeconds ?? null,
+        transcriptChannelId: cfg?.transcriptChannelId ?? null,
+      };
+    },
+  );
+
+  app.put(
+    '/admin/guilds/:guildId/ticket-config',
+    { schema: { params: Params, body: UpdateTicketConfigSchema } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const patch = req.body;
+      const update: Record<string, unknown> = {};
+      for (const k of [
+        'enabled',
+        'panelChannelId',
+        'panelMessageId',
+        'staffRoleId',
+        'defaultSlaSeconds',
+        'transcriptChannelId',
+      ] as const) {
+        const v = (patch as Record<string, unknown>)[k];
+        if (v !== undefined) update[k] = v;
+      }
+      const cfg = await app.prisma.ticketConfig.upsert({
+        where: { guildId },
+        update,
+        create: {
+          guildId,
+          enabled: patch.enabled ?? false,
+          panelChannelId: patch.panelChannelId ?? null,
+          panelMessageId: patch.panelMessageId ?? null,
+          staffRoleId: patch.staffRoleId ?? null,
+          defaultSlaSeconds: patch.defaultSlaSeconds ?? null,
+          transcriptChannelId: patch.transcriptChannelId ?? null,
+        },
+      });
+      return cfg;
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/ticket-categories',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const cats = await app.prisma.ticketCategory.findMany({
+        where: { guildId },
+        orderBy: { position: 'asc' },
+      });
+      return {
+        categories: cats.map((c) => ({
+          id: c.id,
+          guildId: c.guildId,
+          name: c.name,
+          description: c.description,
+          emoji: c.emoji,
+          staffRoleId: c.staffRoleId,
+          slaSeconds: c.slaSeconds,
+          position: c.position,
+        })),
+      };
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/tickets',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({
+          status: z.enum(['open', 'closed']).optional(),
+          userId: SnowflakeSchema.optional(),
+          limit: z.coerce.number().int().min(1).max(100).default(50),
+        }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const items = await app.prisma.ticket.findMany({
+        where: {
+          guildId,
+          ...(req.query.status ? { status: req.query.status } : {}),
+          ...(req.query.userId ? { userId: req.query.userId } : {}),
+        },
+        orderBy: { openedAt: 'desc' },
+        take: req.query.limit,
+      });
+      return {
+        tickets: items.map((t) => ({
+          id: t.id,
+          guildId: t.guildId,
+          categoryId: t.categoryId,
+          userId: t.userId,
+          channelId: t.channelId,
+          number: t.number,
+          status: t.status as 'open' | 'closed',
+          subject: t.subject,
+          assignedTo: t.assignedTo,
+          openedAt: t.openedAt.toISOString(),
+          closedAt: t.closedAt?.toISOString() ?? null,
+          closedBy: t.closedBy,
+          closeReason: t.closeReason,
         })),
       };
     },
