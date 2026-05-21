@@ -1,24 +1,17 @@
 import {
   GuildMember,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
-  MessageFlags,
-  EmbedBuilder,
 } from 'discord.js';
 import type { SlashCommand } from '../../command.js';
+import { api, ApiError } from '../../api-client.js';
 import { checkModerationHierarchy } from './_hierarchy.js';
+import { buildModActionEmbed } from '../../util/mod-action-embed.js';
+import { parseDuration } from '../../util/duration.js';
+import { log } from '../../logger.js';
 
-const DURATION_PATTERN = /^(\d+)\s*([smhd])$/i;
-const UNIT_MS = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
-const MAX_TIMEOUT_MS = 28 * 86_400_000; // Discord max is 28 days
-
-function parseDuration(input: string): number | null {
-  const match = DURATION_PATTERN.exec(input.trim());
-  if (!match) return null;
-  const value = Number(match[1]);
-  const unit = match[2]!.toLowerCase() as keyof typeof UNIT_MS;
-  return value * UNIT_MS[unit];
-}
+const MAX_TIMEOUT_MS = 28 * 86_400_000;
 
 export const timeout: SlashCommand = {
   data: new SlashCommandBuilder()
@@ -28,14 +21,9 @@ export const timeout: SlashCommand = {
     .setContexts(0)
     .addUserOption((o) => o.setName('user').setDescription('Member to timeout.').setRequired(true))
     .addStringOption((o) =>
-      o
-        .setName('duration')
-        .setDescription('Duration, e.g. 10m, 1h, 2d. Use 0 to clear.')
-        .setRequired(true),
+      o.setName('duration').setDescription('Duration, e.g. 10m, 1h, 2d. Use 0 to clear.').setRequired(true),
     )
-    .addStringOption((o) =>
-      o.setName('reason').setDescription('Reason for timeout.').setMaxLength(500),
-    ),
+    .addStringOption((o) => o.setName('reason').setDescription('Reason for timeout.').setMaxLength(500)),
   async execute(interaction) {
     if (!interaction.inGuild() || !interaction.guild) return;
     const target = interaction.options.getUser('user', true);
@@ -52,10 +40,7 @@ export const timeout: SlashCommand = {
       return;
     }
     if (durationMs > MAX_TIMEOUT_MS) {
-      await interaction.reply({
-        content: 'Maximum timeout duration is 28 days.',
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply({ content: 'Maximum timeout duration is 28 days.', flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -83,21 +68,24 @@ export const timeout: SlashCommand = {
 
     await member.timeout(isClear ? null : durationMs, `${interaction.user.tag}: ${reason}`);
 
-    if (isClear) {
-      await interaction.reply(`✅ Cleared timeout for ${target}.`);
-      return;
+    try {
+      const { action } = await api.createModAction(interaction.guildId!, {
+        type: isClear ? 'UNTIMEOUT' : 'TIMEOUT',
+        userId: target.id,
+        moderatorId: interaction.user.id,
+        reason,
+        ...(isClear
+          ? {}
+          : {
+              durationMs,
+              expiresAt: new Date(Date.now() + durationMs).toISOString(),
+            }),
+      });
+      await interaction.reply({ embeds: [buildModActionEmbed(action, target, interaction.user)] });
+    } catch (err) {
+      log.warn('Failed to log timeout', { err: err instanceof Error ? err.message : String(err) });
+      const msg = err instanceof ApiError ? `Action applied, but logging failed: ${err.message}` : 'Action applied, but logging failed.';
+      await interaction.reply({ content: msg });
     }
-    const embed = new EmbedBuilder()
-      .setTitle('Member timed out')
-      .setColor(0xfaa61a)
-      .setThumbnail(target.displayAvatarURL())
-      .addFields(
-        { name: 'User', value: `${target} (\`${target.id}\`)` },
-        { name: 'Moderator', value: `${interaction.user}` },
-        { name: 'Duration', value: rawDuration },
-        { name: 'Reason', value: reason },
-      )
-      .setTimestamp();
-    await interaction.reply({ embeds: [embed] });
   },
 };

@@ -28,11 +28,14 @@ The bot never touches the database directly — it calls the API with a shared b
 | Category | Commands / capabilities |
 |---|---|
 | **General** | `/ping`, `/about`, `/help` |
-| **Moderation** | `/kick`, `/ban`, `/unban`, `/timeout`, `/purge`, `/warn`, `/warnings` |
+| **Moderation** | `/warn`, `/warnings`, `/kick`, `/ban`, `/unban`, `/softban`, `/timeout`, `/mute`, `/unmute`, `/massban`, `/masskick`, `/note`, `/history`, `/case`, `/lockdown`, `/unlockdown`, `/slow`, `/purge` |
 | **Utility** | `/userinfo`, `/serverinfo`, `/avatar`, `/roles` |
 | **Fun** | `/8ball`, `/roll`, `/coinflip`, `/choose` |
 | **Welcome events** | Configurable join/leave messages with `{user}` / `{username}` / `{server}` / `{memberCount}` placeholders |
-| **Admin dashboard** | Stats per guild, warnings list with delete, welcome config |
+| **Audit logging** | Configurable per-event logging of message edits/deletes, member joins/leaves, role changes, channel CRUD, and voice activity to a chosen channel and to a searchable database |
+| **Warning policy** | Optional warning expiry (auto-deactivate after N days) and threshold-based auto-escalation (e.g. 3 warnings → 1h timeout, 5 → ban) |
+| **Case-numbered mod log** | Every moderation action gets a unique per-guild case number for easy reference (`/case 42`) and a unified `/history @user` view |
+| **Admin dashboard** | Per-guild stats, filterable mod log, audit log, welcome config, logging config, warning policy editor |
 
 ## Project layout
 

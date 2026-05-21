@@ -1,8 +1,8 @@
 import {
+  EmbedBuilder,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
-  MessageFlags,
-  EmbedBuilder,
   time,
   TimestampStyles,
 } from 'discord.js';
@@ -12,7 +12,7 @@ import { api, ApiError } from '../../api-client.js';
 export const warnings: SlashCommand = {
   data: new SlashCommandBuilder()
     .setName('warnings')
-    .setDescription("List a member's warnings.")
+    .setDescription("List a member's active warnings.")
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setContexts(0)
     .addUserOption((o) => o.setName('user').setDescription('Member to inspect.').setRequired(true)),
@@ -21,14 +21,16 @@ export const warnings: SlashCommand = {
     const target = interaction.options.getUser('user', true);
 
     try {
-      const { warnings: list } = await api.listWarnings(interaction.guildId, {
+      const { actions } = await api.listModActions(interaction.guildId, {
         userId: target.id,
+        type: 'WARN',
         limit: 25,
       });
+      const active = actions.filter((a) => a.active);
 
-      if (list.length === 0) {
+      if (active.length === 0) {
         await interaction.reply({
-          content: `${target} has no warnings.`,
+          content: `${target} has no active warnings.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -38,12 +40,12 @@ export const warnings: SlashCommand = {
         .setTitle(`Warnings for ${target.tag}`)
         .setThumbnail(target.displayAvatarURL())
         .setColor(0xfaa61a)
-        .setFooter({ text: `${list.length} warning${list.length === 1 ? '' : 's'}` });
+        .setFooter({ text: `${active.length} active warning${active.length === 1 ? '' : 's'}` });
 
-      for (const w of list.slice(0, 10)) {
+      for (const w of active.slice(0, 10)) {
         embed.addFields({
-          name: `${time(new Date(w.createdAt), TimestampStyles.ShortDateTime)} — by <@${w.moderatorId}>`,
-          value: `${w.reason}\n\`${w.id}\``,
+          name: `#${w.caseNumber} · ${time(new Date(w.createdAt), TimestampStyles.ShortDateTime)} · by <@${w.moderatorId}>`,
+          value: w.reason + (w.category ? `\n*Category:* ${w.category}` : ''),
         });
       }
 

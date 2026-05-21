@@ -1,13 +1,15 @@
 import {
   GuildMember,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
-  MessageFlags,
-  EmbedBuilder,
 } from 'discord.js';
 import type { SlashCommand } from '../../command.js';
 import { api, ApiError } from '../../api-client.js';
 import { checkModerationHierarchy } from './_hierarchy.js';
+import { buildModActionEmbed } from '../../util/mod-action-embed.js';
+import { log } from '../../logger.js';
+import { applyEscalation } from './_escalation.js';
 
 export const warn: SlashCommand = {
   data: new SlashCommandBuilder()
@@ -17,25 +19,27 @@ export const warn: SlashCommand = {
     .setContexts(0)
     .addUserOption((o) => o.setName('user').setDescription('Member to warn.').setRequired(true))
     .addStringOption((o) =>
-      o
-        .setName('reason')
-        .setDescription('Reason for the warning.')
-        .setRequired(true)
-        .setMaxLength(500),
+      o.setName('reason').setDescription('Reason for the warning.').setRequired(true).setMaxLength(500),
+    )
+    .addStringOption((o) =>
+      o.setName('category').setDescription('Optional category (spam, harassment, …).').setMaxLength(64),
+    )
+    .addIntegerOption((o) =>
+      o.setName('severity').setDescription('Severity 1–5.').setMinValue(1).setMaxValue(5),
     ),
   async execute(interaction) {
-    if (!interaction.inGuild() || !interaction.guildId) return;
+    if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
     const target = interaction.options.getUser('user', true);
     const reason = interaction.options.getString('reason', true);
+    const category = interaction.options.getString('category') ?? undefined;
+    const severity = interaction.options.getInteger('severity') ?? undefined;
 
     if (target.bot) {
       await interaction.reply({ content: 'You cannot warn a bot.', flags: MessageFlags.Ephemeral });
       return;
     }
 
-    const targetMember = interaction.guild
-      ? await interaction.guild.members.fetch(target.id).catch(() => null)
-      : null;
+    const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
     if (targetMember && interaction.member instanceof GuildMember) {
       const hierarchyError = checkModerationHierarchy(interaction.member, targetMember);
       if (hierarchyError) {
@@ -48,37 +52,44 @@ export const warn: SlashCommand = {
     }
 
     try {
-      const warning = await api.createWarning(interaction.guildId, {
+      const { action, triggeredEscalation } = await api.createModAction(interaction.guildId, {
+        type: 'WARN',
         userId: target.id,
         moderatorId: interaction.user.id,
         reason,
+        ...(category ? { category } : {}),
+        ...(severity ? { severity } : {}),
       });
 
-      const embed = new EmbedBuilder()
-        .setTitle('Warning issued')
-        .setColor(0xfaa61a)
-        .setThumbnail(target.displayAvatarURL())
-        .addFields(
-          { name: 'User', value: `${target} (\`${target.id}\`)` },
-          { name: 'Moderator', value: `${interaction.user}` },
-          { name: 'Reason', value: reason },
-          { name: 'Warning ID', value: `\`${warning.id}\`` },
-        )
-        .setTimestamp(new Date(warning.createdAt));
+      const embed = buildModActionEmbed(action, target, interaction.user);
       await interaction.reply({ embeds: [embed] });
 
-      // Best-effort DM.
       await target
         .send(
-          `You were warned in **${interaction.guild?.name}**.\n**Reason:** ${reason}`,
+          `You were warned in **${interaction.guild.name}** (case #${action.caseNumber}).\n**Reason:** ${reason}`,
         )
         .catch(() => {});
+
+      if (triggeredEscalation && targetMember) {
+        const result = await applyEscalation(
+          interaction.guild,
+          targetMember,
+          interaction.user,
+          triggeredEscalation,
+        );
+        if (result) {
+          await interaction.followUp({ embeds: [buildModActionEmbed(result, target, interaction.user)] });
+        }
+      }
     } catch (err) {
       const msg =
-        err instanceof ApiError
-          ? `Failed to record warning: ${err.message}`
-          : 'Failed to record warning.';
-      await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+        err instanceof ApiError ? `Failed to record warning: ${err.message}` : 'Failed to record warning.';
+      log.warn('Warn command failed', { err: err instanceof Error ? err.message : String(err) });
+      if (interaction.replied) {
+        await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+      }
     }
   },
 };

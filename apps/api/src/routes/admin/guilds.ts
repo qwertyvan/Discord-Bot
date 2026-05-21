@@ -1,7 +1,15 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { SnowflakeSchema, UpdateWelcomeConfigSchema } from '@discord-bot/shared';
+import {
+  AuditEventTypeSchema,
+  ModActionListQuerySchema,
+  ModActionTypeSchema,
+  SnowflakeSchema,
+  UpdateLoggingConfigSchema,
+  UpdateWarningPolicySchema,
+  UpdateWelcomeConfigSchema,
+} from '@discord-bot/shared';
 import { HttpError } from '../../errors.js';
 import { DiscordAuthError } from '../../discord.js';
 import {
@@ -9,14 +17,12 @@ import {
   guildIconUrl,
   invalidatePermissionsCache,
 } from '../../guild-permissions.js';
+import { serializeModAction } from '../../services/mod-actions.js';
 
 const Params = z.object({ guildId: SnowflakeSchema });
-const WarningParams = z.object({ guildId: SnowflakeSchema, warningId: z.string().uuid() });
+const ActionParams = z.object({ guildId: SnowflakeSchema, actionId: z.string().uuid() });
+const NoteParams = z.object({ guildId: SnowflakeSchema, noteId: z.string().uuid() });
 
-/**
- * Wraps a Discord-token-dependent call. If Discord rejects the token, we
- * tear down the session (the user must re-authenticate) and return 401.
- */
 async function withDiscordAuth<T>(
   app: FastifyInstance,
   req: FastifyRequest,
@@ -36,10 +42,6 @@ async function withDiscordAuth<T>(
   }
 }
 
-/**
- * Asserts the current session user has Manage Server on the requested guild
- * AND that the bot is registered for that guild.
- */
 async function ensureGuildAccess(
   app: FastifyInstance,
   req: FastifyRequest,
@@ -66,7 +68,7 @@ async function ensureGuildAccess(
 export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('preHandler', app.requireSession());
 
-  // List guilds where the user can administer AND the bot is present.
+  // ─── Guild list ──────────────────────────────────────────────────────
   app.get('/admin/guilds', async (req, reply) => {
     if (!req.user) throw HttpError.unauthorized();
     const dbUser = await app.prisma.adminUser.findUnique({
@@ -96,6 +98,7 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     };
   });
 
+  // ─── Stats ────────────────────────────────────────────────────────────
   app.get(
     '/admin/guilds/:guildId/stats',
     { schema: { params: Params } },
@@ -104,40 +107,44 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
       await ensureGuildAccess(app, req, reply, guildId);
 
       const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
-      const [warningCount, warningsLast7d, welcome] = await Promise.all([
-        app.prisma.warning.count({ where: { guildId } }),
-        app.prisma.warning.count({ where: { guildId, createdAt: { gte: sevenDaysAgo } } }),
-        app.prisma.welcomeConfig.findUnique({ where: { guildId } }),
-      ]);
+      const [warningCount, warningsLast7d, modActionsLast7d, activeWarnings, welcome, logging] =
+        await Promise.all([
+          app.prisma.modAction.count({ where: { guildId, type: 'WARN' } }),
+          app.prisma.modAction.count({
+            where: { guildId, type: 'WARN', createdAt: { gte: sevenDaysAgo } },
+          }),
+          app.prisma.modAction.count({ where: { guildId, createdAt: { gte: sevenDaysAgo } } }),
+          app.prisma.modAction.count({ where: { guildId, type: 'WARN', active: true } }),
+          app.prisma.welcomeConfig.findUnique({ where: { guildId } }),
+          app.prisma.loggingConfig.findUnique({ where: { guildId } }),
+        ]);
 
       return {
         guildId,
         warningCount,
         warningsLast7d,
+        modActionsLast7d,
+        activeWarnings,
         welcomeEnabled: welcome?.enabled ?? false,
+        loggingEnabled: logging?.enabled ?? false,
       };
     },
   );
 
+  // ─── Mod actions ──────────────────────────────────────────────────────
   app.get(
-    '/admin/guilds/:guildId/warnings',
-    {
-      schema: {
-        params: Params,
-        querystring: z.object({
-          userId: SnowflakeSchema.optional(),
-          limit: z.coerce.number().int().min(1).max(100).default(25),
-          cursor: z.string().uuid().optional(),
-        }),
-      },
-    },
+    '/admin/guilds/:guildId/mod-actions',
+    { schema: { params: Params, querystring: ModActionListQuerySchema } },
     async (req, reply) => {
       const { guildId } = req.params;
       await ensureGuildAccess(app, req, reply, guildId);
-      const { userId, limit, cursor } = req.query;
-
-      const where = userId ? { guildId, userId } : { guildId };
-      const items = await app.prisma.warning.findMany({
+      const { userId, type, limit, cursor } = req.query;
+      const where = {
+        guildId,
+        ...(userId ? { userId } : {}),
+        ...(type ? { type } : {}),
+      };
+      const items = await app.prisma.modAction.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         take: limit + 1,
@@ -147,33 +154,203 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
       const page = hasMore ? items.slice(0, limit) : items;
       const last = page[page.length - 1];
       return {
-        warnings: page.map((w) => ({
-          id: w.id,
-          guildId: w.guildId,
-          userId: w.userId,
-          moderatorId: w.moderatorId,
-          reason: w.reason,
-          createdAt: w.createdAt.toISOString(),
-        })),
+        actions: page.map(serializeModAction),
         nextCursor: hasMore && last ? last.id : null,
       };
     },
   );
 
   app.delete(
-    '/admin/guilds/:guildId/warnings/:warningId',
-    { schema: { params: WarningParams } },
+    '/admin/guilds/:guildId/mod-actions/:actionId',
+    { schema: { params: ActionParams } },
     async (req, reply) => {
-      const { guildId, warningId } = req.params;
+      const { guildId, actionId } = req.params;
       await ensureGuildAccess(app, req, reply, guildId);
-      const result = await app.prisma.warning.deleteMany({
-        where: { id: warningId, guildId },
+      const result = await app.prisma.modAction.deleteMany({
+        where: { id: actionId, guildId },
       });
-      if (result.count === 0) throw HttpError.notFound('Warning not found.');
+      if (result.count === 0) throw HttpError.notFound('Mod action not found.');
       return reply.code(204).send();
     },
   );
 
+  // ─── Mod notes ────────────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/users/:userId/mod-notes',
+    {
+      schema: { params: z.object({ guildId: SnowflakeSchema, userId: SnowflakeSchema }) },
+    },
+    async (req, reply) => {
+      const { guildId, userId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const notes = await app.prisma.modNote.findMany({
+        where: { guildId, userId },
+        orderBy: { createdAt: 'desc' },
+      });
+      return {
+        notes: notes.map((n) => ({
+          id: n.id,
+          guildId: n.guildId,
+          userId: n.userId,
+          moderatorId: n.moderatorId,
+          content: n.content,
+          createdAt: n.createdAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  app.delete(
+    '/admin/guilds/:guildId/mod-notes/:noteId',
+    { schema: { params: NoteParams } },
+    async (req, reply) => {
+      const { guildId, noteId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const result = await app.prisma.modNote.deleteMany({
+        where: { id: noteId, guildId },
+      });
+      if (result.count === 0) throw HttpError.notFound('Note not found.');
+      return reply.code(204).send();
+    },
+  );
+
+  // ─── Audit log ────────────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/audit-events',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({
+          type: AuditEventTypeSchema.optional(),
+          userId: SnowflakeSchema.optional(),
+          limit: z.coerce.number().int().min(1).max(200).default(50),
+        }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const { type, userId, limit } = req.query;
+      const events = await app.prisma.auditEvent.findMany({
+        where: {
+          guildId,
+          ...(type ? { type } : {}),
+          ...(userId ? { userId } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      });
+      return {
+        events: events.map((e) => ({
+          id: e.id,
+          guildId: e.guildId,
+          type: e.type,
+          userId: e.userId,
+          channelId: e.channelId,
+          payload: e.payload as Record<string, unknown>,
+          createdAt: e.createdAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  // ─── Logging config ───────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/logging-config',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const cfg = await app.prisma.loggingConfig.findUnique({ where: { guildId } });
+      return {
+        guildId,
+        enabled: cfg?.enabled ?? false,
+        channelId: cfg?.channelId ?? null,
+        events: (cfg?.events as Record<string, boolean>) ?? {},
+      };
+    },
+  );
+
+  app.put(
+    '/admin/guilds/:guildId/logging-config',
+    { schema: { params: Params, body: UpdateLoggingConfigSchema } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const patch = req.body;
+      const update: Record<string, unknown> = {};
+      if (patch.enabled !== undefined) update.enabled = patch.enabled;
+      if (patch.channelId !== undefined) update.channelId = patch.channelId;
+      if (patch.events !== undefined) update.events = patch.events;
+
+      const cfg = await app.prisma.loggingConfig.upsert({
+        where: { guildId },
+        update,
+        create: {
+          guildId,
+          enabled: patch.enabled ?? false,
+          channelId: patch.channelId ?? null,
+          events: patch.events ?? {},
+        },
+      });
+      return {
+        guildId: cfg.guildId,
+        enabled: cfg.enabled,
+        channelId: cfg.channelId,
+        events: (cfg.events as Record<string, boolean>) ?? {},
+      };
+    },
+  );
+
+  // ─── Warning policy ───────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/warning-policy',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const p = await app.prisma.warningPolicy.findUnique({ where: { guildId } });
+      return {
+        guildId,
+        expireDays: p?.expireDays ?? null,
+        thresholds: (p?.thresholds as unknown[]) ?? [],
+        muteRoleId: p?.muteRoleId ?? null,
+      };
+    },
+  );
+
+  app.put(
+    '/admin/guilds/:guildId/warning-policy',
+    { schema: { params: Params, body: UpdateWarningPolicySchema } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const patch = req.body;
+      const update: Record<string, unknown> = {};
+      if (patch.expireDays !== undefined) update.expireDays = patch.expireDays;
+      if (patch.thresholds !== undefined) update.thresholds = patch.thresholds;
+      if (patch.muteRoleId !== undefined) update.muteRoleId = patch.muteRoleId;
+
+      const policy = await app.prisma.warningPolicy.upsert({
+        where: { guildId },
+        update,
+        create: {
+          guildId,
+          expireDays: patch.expireDays ?? null,
+          thresholds: patch.thresholds ?? [],
+          muteRoleId: patch.muteRoleId ?? null,
+        },
+      });
+      return {
+        guildId: policy.guildId,
+        expireDays: policy.expireDays,
+        thresholds: policy.thresholds as unknown[],
+        muteRoleId: policy.muteRoleId,
+      };
+    },
+  );
+
+  // ─── Welcome config ──────────────────────────────────────────────────
   app.get(
     '/admin/guilds/:guildId/welcome',
     { schema: { params: Params } },
@@ -198,7 +375,6 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
       const { guildId } = req.params;
       await ensureGuildAccess(app, req, reply, guildId);
       const patch = req.body;
-
       const update: Record<string, unknown> = {};
       if (patch.enabled !== undefined) update.enabled = patch.enabled;
       if (patch.channelId !== undefined) update.channelId = patch.channelId;
@@ -225,4 +401,8 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
       };
     },
   );
+
+  // Note: `ModActionTypeSchema` re-export ensures the type union is available
+  // to the dashboard even though no route uses it directly.
+  void ModActionTypeSchema;
 };
