@@ -30,6 +30,11 @@ import type {
   UpdateWelcomeConfigInput,
   LevelConfig,
   UpdateLevelConfigInput,
+  Balance,
+  EconomyConfig,
+  InventoryEntry,
+  ShopItem,
+  CreateShopItemInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -291,4 +296,49 @@ export const api = {
     ),
   resetXp: (guildId: string, userId: string) =>
     call<void>(`/guilds/${guildId}/level/${userId}`, { method: 'DELETE' }),
+
+  // Economy
+  getEconomyConfig: (guildId: string) =>
+    call<EconomyConfig>(`/guilds/${guildId}/economy-config`),
+  getBalance: (guildId: string, userId: string) =>
+    call<Balance>(`/guilds/${guildId}/balance/${userId}`),
+  claimDaily: (guildId: string, userId: string) =>
+    call<Balance & { reward: number }>(`/guilds/${guildId}/balance/${userId}/daily`, { method: 'POST' }),
+  doWork: (guildId: string, userId: string) =>
+    call<Balance & { reward: number }>(`/guilds/${guildId}/balance/${userId}/work`, { method: 'POST' }),
+  transfer: (guildId: string, fromUserId: string, toUserId: string, amount: number) =>
+    call<{ ok: boolean; amount: number }>(`/guilds/${guildId}/balance/${fromUserId}/transfer`, {
+      method: 'POST',
+      body: { toUserId, amount },
+    }),
+  adjustBalance: (guildId: string, userId: string, delta: number) =>
+    call<Balance>(`/guilds/${guildId}/balance/${userId}/adjust`, { method: 'POST', body: { delta } }),
+  gamble: (guildId: string, userId: string, body: { stake: number; game: 'coinflip' | 'slots' }) =>
+    call<
+      Balance & {
+        delta: number;
+        game: 'coinflip' | 'slots';
+        outcome?: 'heads' | 'tails';
+        win?: boolean;
+        reels?: string[];
+        multiplier?: number;
+      }
+    >(`/guilds/${guildId}/balance/${userId}/gamble`, { method: 'POST', body }),
+  listShop: (guildId: string) =>
+    call<{ items: ShopItem[] }>(`/guilds/${guildId}/shop`),
+  createShopItem: (guildId: string, body: CreateShopItemInput) =>
+    call<ShopItem>(`/guilds/${guildId}/shop`, { method: 'POST', body }),
+  deleteShopItem: (guildId: string, itemId: string) =>
+    call<void>(`/guilds/${guildId}/shop/${itemId}`, { method: 'DELETE' }),
+  buyShopItem: (guildId: string, itemId: string, userId: string) =>
+    call<{ item: ShopItem; balance: Balance; inventoryEntry: InventoryEntry }>(
+      `/guilds/${guildId}/shop/${itemId}/buy`,
+      { method: 'POST', body: { userId } },
+    ),
+  listInventory: (guildId: string, userId: string) =>
+    call<{ entries: InventoryEntry[] }>(`/guilds/${guildId}/inventory/${userId}`),
+  economyLeaderboard: (guildId: string, limit = 25) =>
+    call<{
+      entries: Array<{ rank: number; guildId: string; userId: string; amount: number }>;
+    }>(`/guilds/${guildId}/economy-leaderboard`, { query: { limit } }),
 };

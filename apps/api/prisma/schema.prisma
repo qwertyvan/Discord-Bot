@@ -29,7 +29,76 @@ model Guild {
   autoResponses        AutoResponse[]
   levelConfig          LevelConfig?
   memberLevels         MemberLevel[]
+  economyConfig        EconomyConfig?
+  balances             Balance[]
+  shopItems            ShopItem[]
+  inventoryEntries     InventoryEntry[]
   caseCounter          CaseCounter?
+}
+
+model EconomyConfig {
+  guildId              String   @id
+  enabled              Boolean  @default(false)
+  currencyName         String   @default("coins")
+  currencySymbol       String   @default("🪙")
+  startingBalance      Int      @default(0)
+  dailyReward          Int      @default(100)
+  dailyCooldownSeconds Int      @default(86400)
+  workMin              Int      @default(20)
+  workMax              Int      @default(80)
+  workCooldownSeconds  Int      @default(3600)
+  gamblingEnabled      Boolean  @default(true)
+  updatedAt            DateTime @updatedAt
+
+  guild                Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model Balance {
+  guildId      String
+  userId       String
+  amount       Int       @default(0)
+  lastDailyAt  DateTime?
+  lastWorkAt   DateTime?
+  updatedAt    DateTime  @updatedAt @default(now())
+
+  guild        Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, amount(sort: Desc)])
+}
+
+model ShopItem {
+  id          String   @id @default(uuid())
+  guildId     String
+  name        String   @db.VarChar(64)
+  description String?  @db.VarChar(300)
+  price       Int
+  // 'role' grants a Discord role; 'virtual' is a flavor-text item.
+  kind        String   @default("virtual") @db.VarChar(16)
+  roleId      String?
+  // null = unlimited stock.
+  stock       Int?
+  createdAt   DateTime @default(now())
+
+  guild       Guild              @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  inventory   InventoryEntry[]
+
+  @@unique([guildId, name])
+  @@index([guildId])
+}
+
+model InventoryEntry {
+  id         String   @id @default(uuid())
+  guildId    String
+  userId     String
+  itemId     String
+  quantity   Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  item       ShopItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, userId])
 }
 
 model LevelConfig {

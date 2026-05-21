@@ -3,6 +3,7 @@ import { generalCommands } from './general/index.js';
 import { moderationCommands } from './moderation/index.js';
 import { onboardingCommands } from './onboarding/index.js';
 import { levelingCommands } from './leveling/index.js';
+import { economyCommands } from './economy/index.js';
 import { utilityCommands } from './utility/index.js';
 import { funCommands } from './fun/index.js';
 
@@ -26,6 +27,7 @@ export function getCommandRegistry(): CommandRegistry {
     moderation: moderationCommands,
     onboarding: onboardingCommands,
     leveling: levelingCommands,
+    economy: economyCommands,
     utility: utilityCommands,
     fun: funCommands,
   };
