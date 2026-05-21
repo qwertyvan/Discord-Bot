@@ -38,6 +38,7 @@ import { integrationsRoutes } from './routes/integrations.js';
 import { userTimezoneRoutes } from './routes/user-timezone.js';
 import { scheduledRoutes } from './routes/scheduled.js';
 import { shortLinksRoutes } from './routes/short-links.js';
+import { customCommandsRoutes } from './routes/custom-commands.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -96,6 +97,7 @@ export async function buildApp() {
   await app.register(userTimezoneRoutes);
   await app.register(scheduledRoutes);
   await app.register(shortLinksRoutes);
+  await app.register(customCommandsRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);

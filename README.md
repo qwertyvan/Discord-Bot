@@ -40,7 +40,8 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Reaction roles** | Self-serve role panels rendered as buttons (≤ 5 options) or a dropdown, with optional exclusive groups |
 | **Polls** | `/poll create` with up to 10 options, anonymous mode, multi-select, optional auto-close |
 | **Reminders** | `/remindme` personal reminders posted in-channel or DM'd, with `/reminders list`/`cancel` |
-| **Tags** | `/tag add|edit|remove|list|show` canned-content snippets with usage counters |
+| **Tags** | `/tag add|edit|remove|list|show` canned-content snippets with usage counters; supports `{user}`, `{username}`, `{server}`, `{memberCount}`, `{random:a,b,c}` template variables |
+| **Custom commands** | `/custom-command add|edit|remove|list` — guild-scoped slash commands stored in the DB and synced into Discord's per-guild command registration on every change. Responses share the tag template-variable engine. |
 | **Auto-responses** | Keyword → message auto-replies with contains/word/exact matching |
 | **XP &amp; leveling** | Text + voice XP, per-channel multipliers, no-XP roles, level-up announcements, level-based role rewards, `/rank` (text or rendered PNG card), `/leaderboard`, admin `/level give\|reset` |
 | **Economy** | Per-server currency, `/balance`, `/daily`, `/work`, `/pay`, `/shop add\|list\|buy\|remove`, `/inventory`, `/rich` leaderboard, optional `/gamble coinflip\|slots` |

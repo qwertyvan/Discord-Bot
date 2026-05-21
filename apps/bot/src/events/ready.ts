@@ -2,6 +2,7 @@ import { Events, type Client } from 'discord.js';
 import { log } from '../logger.js';
 import { api } from '../api-client.js';
 import { ApiError } from '../api-client.js';
+import { syncCustomCommands } from '../util/custom-commands-sync.js';
 
 export function registerReady(client: Client): void {
   client.once(Events.ClientReady, async (ready) => {
@@ -17,6 +18,9 @@ export function registerReady(client: Client): void {
           name: guild.name,
           iconUrl: guild.iconURL({ size: 256 }),
         });
+        // Re-register the guild's custom slash commands so they survive bot
+        // restarts and reconcile any drift.
+        await syncCustomCommands(guild.id).catch(() => {});
       } catch (err) {
         if (err instanceof ApiError) {
           log.warn('Failed to sync guild on ready', {
