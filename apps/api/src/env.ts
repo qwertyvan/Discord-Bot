@@ -10,6 +10,11 @@ const EnvSchema = z.object({
 
   BOT_API_TOKEN: z.string().min(32, 'BOT_API_TOKEN must be at least 32 characters'),
 
+  // 32 bytes hex (64 chars). Generate with: openssl rand -hex 32
+  TOKEN_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64}$/, 'TOKEN_ENCRYPTION_KEY must be 64 hex characters (32 bytes)'),
+
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
   SESSION_COOKIE_NAME: z.string().default('db_session'),
   SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),

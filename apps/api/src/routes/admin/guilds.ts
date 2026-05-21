@@ -18,6 +18,7 @@ import {
 } from '@discord-bot/shared';
 import { HttpError } from '../../errors.js';
 import { DiscordAuthError } from '../../discord.js';
+import { decryptTokenOrPlaintext } from '../../crypto.js';
 import { channelHeatmap, memberGrowth, modActionsTrend, topTargets } from '../stats.js';
 import {
   getManageableGuilds,
@@ -62,7 +63,10 @@ async function ensureGuildAccess(
   if (!dbUser) throw HttpError.unauthorized();
 
   const manageable = await withDiscordAuth(app, req, reply, () =>
-    getManageableGuilds(dbUser.discordId, dbUser.accessToken),
+    getManageableGuilds(
+        dbUser.discordId,
+        decryptTokenOrPlaintext(dbUser.accessToken, app.config.TOKEN_ENCRYPTION_KEY),
+      ),
   );
   if (!manageable.some((g) => g.id === guildId)) {
     throw HttpError.forbidden('You do not have Manage Server on this guild.');
@@ -84,7 +88,10 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     if (!dbUser) throw HttpError.unauthorized();
 
     const manageable = await withDiscordAuth(app, req, reply, () =>
-      getManageableGuilds(dbUser.discordId, dbUser.accessToken),
+      getManageableGuilds(
+        dbUser.discordId,
+        decryptTokenOrPlaintext(dbUser.accessToken, app.config.TOKEN_ENCRYPTION_KEY),
+      ),
     );
     const manageableIds = new Set(manageable.map((g) => g.id));
 

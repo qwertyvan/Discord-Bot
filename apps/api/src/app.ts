@@ -14,6 +14,7 @@ import botAuthPlugin from './plugins/bot-auth.js';
 import sessionAuthPlugin from './plugins/session-auth.js';
 import discordOAuthPlugin from './plugins/discord-oauth.js';
 import csrfPlugin from './plugins/csrf.js';
+import rateLimitPlugin from './plugins/rate-limit.js';
 import adminAuditPlugin from './plugins/admin-audit.js';
 import { healthRoutes } from './routes/health.js';
 import { guildsRoutes } from './routes/guilds.js';
@@ -68,6 +69,7 @@ export async function buildApp() {
   await app.register(botAuthPlugin);
   await app.register(sessionAuthPlugin);
   await app.register(discordOAuthPlugin);
+  await app.register(rateLimitPlugin);
   await app.register(csrfPlugin);
   await app.register(adminAuditPlugin);
 

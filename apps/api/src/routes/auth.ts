@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { getCurrentUser, userAvatarUrl } from '../discord.js';
 import { invalidatePermissionsCache } from '../guild-permissions.js';
+import { encryptToken } from '../crypto.js';
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   // /auth/discord/login is registered automatically by @fastify/oauth2.
@@ -11,6 +12,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const expiresAt = new Date(Date.now() + Number(token.token.expires_in ?? 0) * 1000);
 
     const me = await getCurrentUser(accessToken);
+    const encryptedToken = encryptToken(accessToken, app.config.TOKEN_ENCRYPTION_KEY);
 
     await app.prisma.adminUser.upsert({
       where: { discordId: me.id },
@@ -18,7 +20,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         username: me.username,
         globalName: me.global_name,
         avatarUrl: userAvatarUrl(me),
-        accessToken,
+        accessToken: encryptedToken,
         tokenExpiresAt: expiresAt,
         lastSeenAt: new Date(),
       },
@@ -27,7 +29,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         username: me.username,
         globalName: me.global_name,
         avatarUrl: userAvatarUrl(me),
-        accessToken,
+        accessToken: encryptedToken,
         tokenExpiresAt: expiresAt,
       },
     });

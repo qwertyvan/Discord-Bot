@@ -8,6 +8,7 @@ import {
 } from '@discord-bot/shared';
 import { HttpError } from '../../errors.js';
 import { DiscordAuthError } from '../../discord.js';
+import { decryptTokenOrPlaintext } from '../../crypto.js';
 import { getManageableGuilds, invalidatePermissionsCache } from '../../guild-permissions.js';
 
 const GuildParams = z.object({ guildId: SnowflakeSchema });
@@ -26,7 +27,10 @@ async function ensureGuildAccess(
   if (!dbUser) throw HttpError.unauthorized();
 
   try {
-    const manageable = await getManageableGuilds(dbUser.discordId, dbUser.accessToken);
+    const manageable = await getManageableGuilds(
+      dbUser.discordId,
+      decryptTokenOrPlaintext(dbUser.accessToken, app.config.TOKEN_ENCRYPTION_KEY),
+    );
     if (!manageable.some((g) => g.id === guildId)) {
       throw HttpError.forbidden('You do not have Manage Server on this guild.');
     }
