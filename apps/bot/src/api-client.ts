@@ -373,4 +373,14 @@ export const api = {
     query?: { status?: 'open' | 'closed'; userId?: string; limit?: number },
   ) =>
     call<{ tickets: Ticket[] }>(`/guilds/${guildId}/tickets`, query ? { query } : {}),
+
+  // Message activity flush
+  flushMessageActivity: (
+    guildId: string,
+    entries: Array<{ channelId: string; date: string; hour: number; count: number }>,
+  ) =>
+    call<{ ok: boolean; count: number }>(`/guilds/${guildId}/message-activity`, {
+      method: 'POST',
+      body: { entries },
+    }),
 };

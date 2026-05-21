@@ -45,7 +45,8 @@ The bot never touches the database directly — it calls the API with a shared b
 | **XP &amp; leveling** | Text + voice XP, per-channel multipliers, no-XP roles, level-up announcements, level-based role rewards, `/rank`, `/leaderboard`, admin `/level give\|reset` |
 | **Economy** | Per-server currency, `/balance`, `/daily`, `/work`, `/pay`, `/shop add\|list\|buy\|remove`, `/inventory`, `/rich` leaderboard, optional `/gamble coinflip\|slots` |
 | **Tickets** | Button-driven private support threads, optional categories with separate staff teams, `/ticket close\|assign`, dashboard list of open/closed tickets |
-| **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome / verification / reaction-roles / logging / policy / leveling / economy / tickets config screens |
+| **Stats &amp; analytics** | Stats dashboard tab with member growth (30d), mod-action trends (30d, stacked by type), top moderation targets, and a per-channel × hour activity heatmap |
+| **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome / verification / reaction-roles / logging / policy / leveling / economy / tickets / stats config screens |
 
 ## Project layout
 

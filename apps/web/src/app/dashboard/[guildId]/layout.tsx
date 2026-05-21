@@ -25,6 +25,7 @@ export default async function GuildLayout({
   const base = `/dashboard/${guildId}`;
   const tabs = [
     { href: base, label: 'Overview' },
+    { href: `${base}/stats`, label: 'Stats' },
     { href: `${base}/mod-log`, label: 'Mod log' },
     { href: `${base}/audit-log`, label: 'Audit log' },
     { href: `${base}/automod`, label: 'Automod' },
