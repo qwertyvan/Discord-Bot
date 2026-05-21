@@ -48,6 +48,7 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Stats &amp; analytics** | Stats dashboard tab with member growth (30d), mod-action trends (30d, stacked by type), top moderation targets, and a per-channel × hour activity heatmap |
 | **Integrations** | RSS feed subscriptions (YouTube, Reddit, blogs) polled by the bot; incoming webhook endpoints with optional HMAC-SHA256 signing — payloads queued and delivered by the bot |
 | **Misc utility** | `/time show\|set\|clear` per-user IANA timezone, `/preview <url>` link-preview unfurler |
+| **Scheduling** | `/announce schedule\|list\|cancel` one-shot or recurring announcements, `/birthday set\|show\|clear` with daily auto-announce, `/event create\|cancel\|upcoming` with yes / maybe / no RSVP buttons |
 | **Dashboard polish** | Per-guild admin-action audit log, JSON config export endpoint, sensible-default Config tab |
 | **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome / verification / reaction-roles / logging / policy / leveling / economy / tickets / stats config screens |
 

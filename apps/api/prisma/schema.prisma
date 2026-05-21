@@ -40,7 +40,88 @@ model Guild {
   integrations         IntegrationSubscription[]
   pendingPosts         PendingPost[]
   adminActions         AdminAction[]
+  scheduledAnnouncements ScheduledAnnouncement[]
+  birthdayConfig       BirthdayConfig?
+  userBirthdays        UserBirthday[]
+  events               Event[]
   caseCounter          CaseCounter?
+}
+
+model ScheduledAnnouncement {
+  id          String   @id @default(uuid())
+  guildId     String
+  channelId   String
+  content     String?  @db.VarChar(2000)
+  embedJson   Json?
+  runAt       DateTime
+  // When set, re-fires every N seconds and runAt advances on each firing.
+  repeatEvery Int?
+  lastRunAt   DateTime?
+  enabled     Boolean  @default(true)
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, runAt])
+  @@index([guildId, runAt])
+}
+
+model BirthdayConfig {
+  guildId            String    @id
+  enabled            Boolean   @default(false)
+  channelId          String?
+  template           String?   @db.VarChar(500)
+  announceHour       Int       @default(12)
+  lastAnnouncedDate  DateTime? @db.Date
+  updatedAt          DateTime  @updatedAt
+
+  guild              Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model UserBirthday {
+  guildId   String
+  userId    String
+  month     Int
+  day       Int
+  year      Int?
+  updatedAt DateTime @updatedAt @default(now())
+
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, month, day])
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  guildId     String
+  channelId   String
+  messageId   String?
+  title       String      @db.VarChar(200)
+  description String?     @db.VarChar(2000)
+  startsAt    DateTime
+  endsAt      DateTime?
+  location    String?     @db.VarChar(200)
+  createdBy   String
+  createdAt   DateTime    @default(now())
+
+  guild       Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  rsvps       EventRsvp[]
+
+  @@index([guildId, startsAt])
+}
+
+model EventRsvp {
+  eventId     String
+  userId      String
+  status      String   @db.VarChar(8)
+  respondedAt DateTime @default(now())
+
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@index([eventId])
 }
 
 // Each session-authed mutation through /admin/* is recorded here so the

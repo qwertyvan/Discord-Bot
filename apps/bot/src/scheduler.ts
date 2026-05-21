@@ -14,17 +14,23 @@ const REMINDER_TICK_MS = 10_000;
 const POLL_TICK_MS = 30_000;
 const POSTS_TICK_MS = 15_000;
 const RSS_TICK_MS = 60_000;
+const ANNOUNCE_TICK_MS = 30_000;
+const BIRTHDAY_TICK_MS = 5 * 60_000;
 
 export function startScheduler(client: Client): void {
   setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
   setInterval(() => closeDuePolls(client).catch(noop), POLL_TICK_MS);
   setInterval(() => deliverPendingPosts(client).catch(noop), POSTS_TICK_MS);
   setInterval(() => pollRssFeeds().catch(noop), RSS_TICK_MS);
+  setInterval(() => fireDueAnnouncements().catch(noop), ANNOUNCE_TICK_MS);
+  setInterval(() => fireBirthdays(client).catch(noop), BIRTHDAY_TICK_MS);
   setTimeout(() => {
     fireDueReminders(client).catch(noop);
     closeDuePolls(client).catch(noop);
     deliverPendingPosts(client).catch(noop);
     pollRssFeeds().catch(noop);
+    fireDueAnnouncements().catch(noop);
+    fireBirthdays(client).catch(noop);
   }, 5_000);
 }
 
@@ -135,6 +141,53 @@ async function deliverPendingPosts(client: Client): Promise<void> {
     } catch (err) {
       log.warn('Pending post delivery failed', { id: post.id, err: String(err) });
       // Leave it in the queue; next tick will retry.
+    }
+  }
+}
+
+async function fireDueAnnouncements(): Promise<void> {
+  let due;
+  try {
+    due = await api.dueAnnouncements();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('dueAnnouncements API error', { status: err.status });
+    return;
+  }
+  for (const a of due.announcements) {
+    try {
+      await api.createPendingPost({
+        guildId: a.guildId,
+        channelId: a.channelId,
+        ...(a.content ? { content: a.content } : {}),
+        ...(a.embedJson ? { embedJson: a.embedJson } : {}),
+        source: 'announcement',
+      });
+      await api.advanceAnnouncement(a.id);
+    } catch (err) {
+      log.warn('Announcement fire failed', { id: a.id, err: String(err) });
+    }
+  }
+}
+
+async function fireBirthdays(client: Client): Promise<void> {
+  // Walk every guild the bot is in and ask the API whether today's birthday
+  // window has elapsed. The API enforces a once-per-day side-effect.
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const result = await api.pollBirthdays(guild.id);
+      if (!result.fired || !result.channelId || !result.template) continue;
+      const channel = guild.channels.cache.get(result.channelId);
+      if (!channel || channel.type !== ChannelType.GuildText) continue;
+      const mentions = result.birthdays.map((b) => `<@${b.userId}>`).join(', ');
+      if (!mentions) continue; // No birthdays today.
+      const content = result.template
+        .replaceAll('{users}', mentions)
+        .replaceAll('{server}', guild.name);
+      await (channel as TextChannel)
+        .send({ content, allowedMentions: { users: result.birthdays.map((b) => b.userId) } })
+        .catch((err) => log.warn('Birthday post failed', { guildId: guild.id, err: String(err) }));
+    } catch (err) {
+      log.warn('Birthday poll failed', { guildId: guild.id, err: String(err) });
     }
   }
 }

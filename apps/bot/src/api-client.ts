@@ -42,6 +42,14 @@ import type {
   TicketConfig,
   UpdateTicketConfigInput,
   UpdateTicketInput,
+  ScheduledAnnouncement,
+  CreateScheduledAnnouncementInput,
+  BirthdayConfig,
+  UpdateBirthdayConfigInput,
+  UserBirthday,
+  SetUserBirthdayInput,
+  Event as GuildEvent,
+  CreateEventInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -431,4 +439,63 @@ export const api = {
     }),
   clearUserTimezone: (userId: string) =>
     call<void>(`/users/${userId}/timezone`, { method: 'DELETE' }),
+
+  // Scheduled announcements
+  listAnnouncements: (guildId: string) =>
+    call<{ announcements: ScheduledAnnouncement[] }>(`/guilds/${guildId}/announcements`),
+  createAnnouncement: (guildId: string, body: CreateScheduledAnnouncementInput) =>
+    call<ScheduledAnnouncement>(`/guilds/${guildId}/announcements`, { method: 'POST', body }),
+  deleteAnnouncement: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/announcements/${id}`, { method: 'DELETE' }),
+  dueAnnouncements: () =>
+    call<{ announcements: ScheduledAnnouncement[] }>(`/announcements/due`),
+  advanceAnnouncement: (id: string) =>
+    call<unknown>(`/announcements/${id}/advance`, { method: 'POST' }),
+
+  // Birthdays
+  getBirthdayConfig: (guildId: string) =>
+    call<BirthdayConfig>(`/guilds/${guildId}/birthday-config`),
+  updateBirthdayConfig: (guildId: string, body: UpdateBirthdayConfigInput) =>
+    call<BirthdayConfig>(`/guilds/${guildId}/birthday-config`, { method: 'PUT', body }),
+  setBirthday: (guildId: string, userId: string, body: SetUserBirthdayInput) =>
+    call<UserBirthday>(`/guilds/${guildId}/users/${userId}/birthday`, { method: 'PUT', body }),
+  getBirthday: (guildId: string, userId: string) =>
+    call<UserBirthday | null>(`/guilds/${guildId}/users/${userId}/birthday`),
+  clearBirthday: (guildId: string, userId: string) =>
+    call<void>(`/guilds/${guildId}/users/${userId}/birthday`, { method: 'DELETE' }),
+  pollBirthdays: (guildId: string) =>
+    call<{
+      fired: boolean;
+      channelId?: string;
+      template?: string;
+      birthdays: Array<{ userId: string; month: number; day: number; year: number | null }>;
+    }>(`/guilds/${guildId}/birthdays/poll`, { method: 'POST' }),
+
+  // Events
+  listEvents: (guildId: string, query?: { upcoming?: boolean; limit?: number }) =>
+    call<{ events: GuildEvent[] }>(
+      `/guilds/${guildId}/events`,
+      query
+        ? {
+            query: {
+              ...(query.upcoming ? { upcoming: 1 } : {}),
+              ...(query.limit !== undefined ? { limit: query.limit } : {}),
+            },
+          }
+        : {},
+    ),
+  createEvent: (guildId: string, body: CreateEventInput) =>
+    call<GuildEvent>(`/guilds/${guildId}/events`, { method: 'POST', body }),
+  getEvent: (guildId: string, eventId: string) =>
+    call<GuildEvent>(`/guilds/${guildId}/events/${eventId}`),
+  updateEvent: (guildId: string, eventId: string, body: { messageId?: string | null }) =>
+    call<GuildEvent>(`/guilds/${guildId}/events/${eventId}`, { method: 'PATCH', body }),
+  deleteEvent: (guildId: string, eventId: string) =>
+    call<void>(`/guilds/${guildId}/events/${eventId}`, { method: 'DELETE' }),
+  rsvpEvent: (
+    guildId: string,
+    eventId: string,
+    body: { userId: string; status: 'yes' | 'maybe' | 'no' },
+  ) =>
+    call<GuildEvent>(`/guilds/${guildId}/events/${eventId}/rsvp`, { method: 'POST', body }),
 };
