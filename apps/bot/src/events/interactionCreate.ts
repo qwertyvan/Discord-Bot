@@ -46,6 +46,10 @@ export function registerInteractionCreate(client: Client): void {
           await handleTicketOpen(interaction, categoryId);
           return;
         }
+        if (interaction.customId.startsWith('rsvp:')) {
+          await handleRsvp(interaction);
+          return;
+        }
       }
 
       if (interaction.isStringSelectMenu()) {
@@ -292,4 +296,33 @@ async function handleTicketOpen(
     await interaction.editReply(msg);
   }
   void PermissionFlagsBits; // referenced elsewhere; keep import live
+}
+
+async function handleRsvp(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  const [, statusRaw, eventId] = interaction.customId.split(':');
+  if (!eventId || !statusRaw || !['yes', 'maybe', 'no'].includes(statusRaw)) return;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const updated = await api.rsvpEvent(interaction.guildId, eventId, {
+      userId: interaction.user.id,
+      status: statusRaw as 'yes' | 'maybe' | 'no',
+    });
+    if (updated.messageId && updated.channelId) {
+      const channel = interaction.guild.channels.cache.get(updated.channelId);
+      if (channel && channel.type === ChannelType.GuildText) {
+        const { eventMessagePayload } = await import('../util/event-render.js');
+        const message = await (channel as TextChannel).messages
+          .fetch(updated.messageId)
+          .catch(() => null);
+        if (message) await message.edit(eventMessagePayload(updated)).catch(() => {});
+      }
+    }
+    const label = statusRaw === 'yes' ? '✅ Going' : statusRaw === 'maybe' ? '🤔 Maybe' : '❌ Not going';
+    await interaction.editReply(`${label} for **${updated.title}**.`);
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to RSVP.';
+    await interaction.editReply(msg);
+  }
 }
