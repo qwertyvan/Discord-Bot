@@ -7,6 +7,7 @@ import {
   ModActionTypeSchema,
   SnowflakeSchema,
   UpdateAutomodConfigSchema,
+  UpdateEconomyConfigSchema,
   UpdateLevelConfigSchema,
   UpdateLoggingConfigSchema,
   UpdateVerificationConfigSchema,
@@ -675,6 +676,124 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
           xp: m.xp,
           voiceMinutes: m.voiceMinutes,
           level: levelFromXp(m.xp),
+        })),
+      };
+    },
+  );
+
+  // ─── Economy ──────────────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/economy-config',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const cfg = await app.prisma.economyConfig.findUnique({ where: { guildId } });
+      return {
+        guildId,
+        enabled: cfg?.enabled ?? false,
+        currencyName: cfg?.currencyName ?? 'coins',
+        currencySymbol: cfg?.currencySymbol ?? '🪙',
+        startingBalance: cfg?.startingBalance ?? 0,
+        dailyReward: cfg?.dailyReward ?? 100,
+        dailyCooldownSeconds: cfg?.dailyCooldownSeconds ?? 86_400,
+        workMin: cfg?.workMin ?? 20,
+        workMax: cfg?.workMax ?? 80,
+        workCooldownSeconds: cfg?.workCooldownSeconds ?? 3600,
+        gamblingEnabled: cfg?.gamblingEnabled ?? true,
+      };
+    },
+  );
+
+  app.put(
+    '/admin/guilds/:guildId/economy-config',
+    { schema: { params: Params, body: UpdateEconomyConfigSchema } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const patch = req.body;
+      const update: Record<string, unknown> = {};
+      for (const k of [
+        'enabled',
+        'currencyName',
+        'currencySymbol',
+        'startingBalance',
+        'dailyReward',
+        'dailyCooldownSeconds',
+        'workMin',
+        'workMax',
+        'workCooldownSeconds',
+        'gamblingEnabled',
+      ] as const) {
+        const v = (patch as Record<string, unknown>)[k];
+        if (v !== undefined) update[k] = v;
+      }
+      const cfg = await app.prisma.economyConfig.upsert({
+        where: { guildId },
+        update,
+        create: {
+          guildId,
+          enabled: patch.enabled ?? false,
+          currencyName: patch.currencyName ?? 'coins',
+          currencySymbol: patch.currencySymbol ?? '🪙',
+          startingBalance: patch.startingBalance ?? 0,
+          dailyReward: patch.dailyReward ?? 100,
+          dailyCooldownSeconds: patch.dailyCooldownSeconds ?? 86_400,
+          workMin: patch.workMin ?? 20,
+          workMax: patch.workMax ?? 80,
+          workCooldownSeconds: patch.workCooldownSeconds ?? 3600,
+          gamblingEnabled: patch.gamblingEnabled ?? true,
+        },
+      });
+      return cfg;
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/economy-leaderboard',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({ limit: z.coerce.number().int().min(1).max(100).default(25) }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const top = await app.prisma.balance.findMany({
+        where: { guildId },
+        orderBy: { amount: 'desc' },
+        take: req.query.limit,
+      });
+      return {
+        entries: top.map((b, i) => ({
+          rank: i + 1,
+          guildId,
+          userId: b.userId,
+          amount: b.amount,
+        })),
+      };
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/shop',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const items = await app.prisma.shopItem.findMany({ where: { guildId }, orderBy: { price: 'asc' } });
+      return {
+        items: items.map((i) => ({
+          id: i.id,
+          guildId: i.guildId,
+          name: i.name,
+          description: i.description,
+          price: i.price,
+          kind: i.kind as 'virtual' | 'role',
+          roleId: i.roleId,
+          stock: i.stock,
+          createdAt: i.createdAt.toISOString(),
         })),
       };
     },
