@@ -2,8 +2,11 @@ import {
   ChannelType,
   Events,
   MessageFlags,
+  PermissionFlagsBits,
+  ThreadAutoArchiveDuration,
   type ButtonInteraction,
   type Client,
+  type MessageComponentInteraction,
   type StringSelectMenuInteraction,
   type TextChannel,
 } from 'discord.js';
@@ -38,11 +41,22 @@ export function registerInteractionCreate(client: Client): void {
           await handlePollVote(interaction);
           return;
         }
+        if (interaction.customId.startsWith('ticket:open')) {
+          const categoryId = interaction.customId.split(':')[2] ?? null;
+          await handleTicketOpen(interaction, categoryId);
+          return;
+        }
       }
 
-      if (interaction.isStringSelectMenu() && interaction.customId.startsWith('rr:select:')) {
-        await handleReactionRoleSelect(interaction);
-        return;
+      if (interaction.isStringSelectMenu()) {
+        if (interaction.customId.startsWith('rr:select:')) {
+          await handleReactionRoleSelect(interaction);
+          return;
+        }
+        if (interaction.customId === 'ticket:open:select') {
+          await handleTicketOpen(interaction, interaction.values[0] ?? null);
+          return;
+        }
       }
     } catch (err) {
       log.error('Interaction handler threw', {
@@ -206,4 +220,76 @@ async function handlePollVote(interaction: ButtonInteraction): Promise<void> {
     const msg = err instanceof ApiError ? err.message : 'Vote failed.';
     await interaction.editReply(msg);
   }
+}
+
+async function handleTicketOpen(
+  interaction: MessageComponentInteraction,
+  categoryId: string | null,
+): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const cfg = await api.getTicketConfig(interaction.guildId);
+    if (!cfg.enabled) {
+      await interaction.editReply('Tickets are not currently enabled.');
+      return;
+    }
+    let category = null;
+    let staffRoleId = cfg.staffRoleId;
+    if (categoryId) {
+      const { categories } = await api.listTicketCategories(interaction.guildId);
+      category = categories.find((c) => c.id === categoryId) ?? null;
+      if (category?.staffRoleId) staffRoleId = category.staffRoleId;
+    }
+
+    const panelChannelId = cfg.panelChannelId ?? interaction.channelId;
+    const panelChannel = panelChannelId
+      ? interaction.guild.channels.cache.get(panelChannelId)
+      : null;
+    if (!panelChannel || panelChannel.type !== ChannelType.GuildText) {
+      await interaction.editReply('Ticket panel channel is missing — ask a mod to re-run /ticket-setup.');
+      return;
+    }
+    const parent = panelChannel as TextChannel;
+
+    const thread = await parent.threads.create({
+      name: `ticket-${interaction.user.username.slice(0, 24)}`,
+      type: ChannelType.PrivateThread,
+      autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+      reason: 'Ticket opened',
+    });
+    await thread.members.add(interaction.user.id).catch(() => {});
+
+    let staffMention = '';
+    if (staffRoleId) {
+      const role = interaction.guild.roles.cache.get(staffRoleId);
+      if (role) {
+        await thread.send({
+          content: `Pinging staff: ${role}`,
+          allowedMentions: { roles: [role.id] },
+        });
+        staffMention = ` (notified ${role})`;
+      }
+    }
+
+    const ticket = await api.createTicket(interaction.guildId, {
+      userId: interaction.user.id,
+      channelId: thread.id,
+      ...(category ? { categoryId: category.id } : {}),
+    });
+
+    await thread.send({
+      content: [
+        `🎫 **Ticket #${ticket.number}** opened by <@${interaction.user.id}>${category ? ` · ${category.name}` : ''}`,
+        'A staff member will be with you shortly. Use `/ticket close` when resolved.',
+      ].join('\n'),
+      allowedMentions: { users: [interaction.user.id] },
+    });
+
+    await interaction.editReply(`✅ Opened ticket #${ticket.number}${staffMention}: ${thread}`);
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to open ticket.';
+    await interaction.editReply(msg);
+  }
+  void PermissionFlagsBits; // referenced elsewhere; keep import live
 }

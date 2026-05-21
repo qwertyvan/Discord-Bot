@@ -35,6 +35,13 @@ import type {
   InventoryEntry,
   ShopItem,
   CreateShopItemInput,
+  CreateTicketCategoryInput,
+  CreateTicketInput,
+  Ticket,
+  TicketCategory,
+  TicketConfig,
+  UpdateTicketConfigInput,
+  UpdateTicketInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -341,4 +348,29 @@ export const api = {
     call<{
       entries: Array<{ rank: number; guildId: string; userId: string; amount: number }>;
     }>(`/guilds/${guildId}/economy-leaderboard`, { query: { limit } }),
+
+  // Tickets
+  getTicketConfig: (guildId: string) =>
+    call<TicketConfig>(`/guilds/${guildId}/ticket-config`),
+  updateTicketConfig: (guildId: string, body: UpdateTicketConfigInput) =>
+    call<TicketConfig>(`/guilds/${guildId}/ticket-config`, { method: 'PUT', body }),
+  listTicketCategories: (guildId: string) =>
+    call<{ categories: TicketCategory[] }>(`/guilds/${guildId}/ticket-categories`),
+  createTicketCategory: (guildId: string, body: CreateTicketCategoryInput) =>
+    call<TicketCategory>(`/guilds/${guildId}/ticket-categories`, { method: 'POST', body }),
+  deleteTicketCategory: (guildId: string, categoryId: string) =>
+    call<void>(`/guilds/${guildId}/ticket-categories/${categoryId}`, { method: 'DELETE' }),
+  createTicket: (guildId: string, body: CreateTicketInput) =>
+    call<Ticket>(`/guilds/${guildId}/tickets`, { method: 'POST', body }),
+  getTicket: (guildId: string, ticketId: string) =>
+    call<Ticket>(`/guilds/${guildId}/tickets/${ticketId}`),
+  getTicketByChannel: (guildId: string, channelId: string) =>
+    call<Ticket>(`/guilds/${guildId}/tickets/by-channel/${channelId}`),
+  updateTicket: (guildId: string, ticketId: string, body: UpdateTicketInput) =>
+    call<Ticket>(`/guilds/${guildId}/tickets/${ticketId}`, { method: 'PATCH', body }),
+  listTickets: (
+    guildId: string,
+    query?: { status?: 'open' | 'closed'; userId?: string; limit?: number },
+  ) =>
+    call<{ tickets: Ticket[] }>(`/guilds/${guildId}/tickets`, query ? { query } : {}),
 };
