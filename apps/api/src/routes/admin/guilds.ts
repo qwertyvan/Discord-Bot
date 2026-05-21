@@ -6,6 +6,7 @@ import {
   ModActionListQuerySchema,
   ModActionTypeSchema,
   SnowflakeSchema,
+  UpdateAutomodConfigSchema,
   UpdateLoggingConfigSchema,
   UpdateWarningPolicySchema,
   UpdateWelcomeConfigSchema,
@@ -402,7 +403,100 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
-  // Note: `ModActionTypeSchema` re-export ensures the type union is available
-  // to the dashboard even though no route uses it directly.
+  // ─── Automod config + hits ────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/automod-config',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const cfg = await app.prisma.automodConfig.findUnique({ where: { guildId } });
+      return {
+        guildId,
+        enabled: cfg?.enabled ?? false,
+        exemptRoleIds: (cfg?.exemptRoleIds as string[]) ?? [],
+        exemptChannelIds: (cfg?.exemptChannelIds as string[]) ?? [],
+        rules: (cfg?.rules as Record<string, unknown>) ?? {},
+      };
+    },
+  );
+
+  app.put(
+    '/admin/guilds/:guildId/automod-config',
+    { schema: { params: Params, body: UpdateAutomodConfigSchema } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const patch = req.body;
+      const update: Record<string, unknown> = {};
+      if (patch.enabled !== undefined) update.enabled = patch.enabled;
+      if (patch.exemptRoleIds !== undefined) update.exemptRoleIds = patch.exemptRoleIds;
+      if (patch.exemptChannelIds !== undefined) update.exemptChannelIds = patch.exemptChannelIds;
+      if (patch.rules !== undefined) update.rules = patch.rules;
+
+      const cfg = await app.prisma.automodConfig.upsert({
+        where: { guildId },
+        update,
+        create: {
+          guildId,
+          enabled: patch.enabled ?? false,
+          exemptRoleIds: patch.exemptRoleIds ?? [],
+          exemptChannelIds: patch.exemptChannelIds ?? [],
+          rules: patch.rules ?? {},
+        },
+      });
+      return {
+        guildId: cfg.guildId,
+        enabled: cfg.enabled,
+        exemptRoleIds: (cfg.exemptRoleIds as string[]) ?? [],
+        exemptChannelIds: (cfg.exemptChannelIds as string[]) ?? [],
+        rules: (cfg.rules as Record<string, unknown>) ?? {},
+      };
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/automod-hits',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({
+          userId: SnowflakeSchema.optional(),
+          rule: z.string().optional(),
+          limit: z.coerce.number().int().min(1).max(200).default(50),
+        }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const { userId, rule, limit } = req.query;
+      const hits = await app.prisma.automodHit.findMany({
+        where: {
+          guildId,
+          ...(userId ? { userId } : {}),
+          ...(rule ? { rule } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      });
+      return {
+        hits: hits.map((h) => ({
+          id: h.id,
+          guildId: h.guildId,
+          userId: h.userId,
+          channelId: h.channelId,
+          rule: h.rule,
+          action: h.action,
+          reason: h.reason,
+          payload: h.payload as Record<string, unknown>,
+          createdAt: h.createdAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  // Note: re-exported schemas keep the type union compile-coupled to the
+  // dashboard even though no route uses them directly.
   void ModActionTypeSchema;
 };

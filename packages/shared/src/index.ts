@@ -3,6 +3,7 @@ export * from './guild.js';
 export * from './mod-action.js';
 export * from './mod-note.js';
 export * from './audit-event.js';
+export * from './automod.js';
 export * from './welcome.js';
 export * from './user.js';
 export * from './errors.js';
