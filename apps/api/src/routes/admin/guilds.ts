@@ -375,6 +375,8 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
         autoRoleIds: (cfg?.autoRoleIds as string[]) ?? [],
         milestoneEvery: cfg?.milestoneEvery ?? null,
         milestoneTemplate: cfg?.milestoneTemplate ?? null,
+        cardEnabled: cfg?.cardEnabled ?? false,
+        cardBackgroundUrl: cfg?.cardBackgroundUrl ?? null,
       };
     },
   );
@@ -395,6 +397,8 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
       if (patch.autoRoleIds !== undefined) update.autoRoleIds = patch.autoRoleIds;
       if (patch.milestoneEvery !== undefined) update.milestoneEvery = patch.milestoneEvery;
       if (patch.milestoneTemplate !== undefined) update.milestoneTemplate = patch.milestoneTemplate;
+      if (patch.cardEnabled !== undefined) update.cardEnabled = patch.cardEnabled;
+      if (patch.cardBackgroundUrl !== undefined) update.cardBackgroundUrl = patch.cardBackgroundUrl;
 
       const cfg = await app.prisma.welcomeConfig.upsert({
         where: { guildId },
@@ -409,6 +413,8 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
           autoRoleIds: patch.autoRoleIds ?? [],
           milestoneEvery: patch.milestoneEvery ?? null,
           milestoneTemplate: patch.milestoneTemplate ?? null,
+          cardEnabled: patch.cardEnabled ?? false,
+          cardBackgroundUrl: patch.cardBackgroundUrl ?? null,
         },
       });
       return {
@@ -421,6 +427,8 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
         autoRoleIds: (cfg.autoRoleIds as string[]) ?? [],
         milestoneEvery: cfg.milestoneEvery,
         milestoneTemplate: cfg.milestoneTemplate,
+        cardEnabled: cfg.cardEnabled,
+        cardBackgroundUrl: cfg.cardBackgroundUrl,
       };
     },
   );
@@ -597,6 +605,7 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
         channelMultipliers: (cfg?.channelMultipliers as Record<string, number>) ?? {},
         roleRewards: (cfg?.roleRewards as Array<{ level: number; roleId: string }>) ?? [],
         noXpRoleIds: (cfg?.noXpRoleIds as string[]) ?? [],
+        rankCardEnabled: cfg?.rankCardEnabled ?? false,
       };
     },
   );
@@ -619,6 +628,7 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
         'channelMultipliers',
         'roleRewards',
         'noXpRoleIds',
+        'rankCardEnabled',
       ] as const) {
         const v = (patch as Record<string, unknown>)[k];
         if (v !== undefined) update[k] = v;
@@ -637,6 +647,7 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
           channelMultipliers: patch.channelMultipliers ?? {},
           roleRewards: patch.roleRewards ?? [],
           noXpRoleIds: patch.noXpRoleIds ?? [],
+          rankCardEnabled: patch.rankCardEnabled ?? false,
         },
       });
       return {
@@ -650,6 +661,7 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
         channelMultipliers: cfg.channelMultipliers as Record<string, number>,
         roleRewards: cfg.roleRewards as Array<{ level: number; roleId: string }>,
         noXpRoleIds: cfg.noXpRoleIds as string[],
+        rankCardEnabled: cfg.rankCardEnabled,
       };
     },
   );

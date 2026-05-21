@@ -50,6 +50,7 @@ export default async function LevelingPage({
       .split(/[\s,]+/)
       .map((s) => s.trim())
       .filter(Boolean);
+    const rankCardEnabled = formData.get('rankCardEnabled') === 'on';
 
     await serverFetch(`/admin/guilds/${gid}/level-config`, {
       method: 'PUT',
@@ -63,6 +64,7 @@ export default async function LevelingPage({
         channelMultipliers,
         roleRewards,
         noXpRoleIds,
+        rankCardEnabled,
       },
     });
     revalidatePath(`/dashboard/${gid}`, 'layout');
@@ -134,6 +136,22 @@ export default async function LevelingPage({
           help={`Example: [{"level": 5, "roleId": "..."}, {"level": 10, "roleId": "..."}]`}
           textarea
         />
+
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              name="rankCardEnabled"
+              defaultChecked={cfg.rankCardEnabled}
+              className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-discord"
+            />
+            <span className="text-sm font-medium">Render a PNG rank card for /rank</span>
+          </label>
+          <p className="mt-2 text-xs text-slate-500">
+            When off, /rank uses a text embed. When on, the bot composes an avatar + level + XP bar
+            into an image.
+          </p>
+        </div>
 
         <button
           type="submit"

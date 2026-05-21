@@ -36,13 +36,13 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Warning policy** | Optional warning expiry (auto-deactivate after N days) and threshold-based auto-escalation (e.g. 3 warnings → 1h timeout, 5 → ban) |
 | **Case-numbered mod log** | Every moderation action gets a unique per-guild case number for easy reference (`/case 42`) and a unified `/history @user` view |
 | **Auto-moderation** | Per-guild rules for anti-spam, anti-invite, mass-mention, CAPS, emoji-spam, zalgo, link allow/block lists, badwords, phishing domains; per-join rules for new accounts and raid lockdown; configurable action (delete/warn/timeout/kick/ban) and exempt roles/channels |
-| **Onboarding** | Join/leave + DM templates, auto-role on join, milestone announcements, button-based verification gate |
+| **Onboarding** | Join/leave + DM templates, auto-role on join, milestone announcements, button-based verification gate, optional rendered PNG welcome cards (configurable background) |
 | **Reaction roles** | Self-serve role panels rendered as buttons (≤ 5 options) or a dropdown, with optional exclusive groups |
 | **Polls** | `/poll create` with up to 10 options, anonymous mode, multi-select, optional auto-close |
 | **Reminders** | `/remindme` personal reminders posted in-channel or DM'd, with `/reminders list`/`cancel` |
 | **Tags** | `/tag add|edit|remove|list|show` canned-content snippets with usage counters |
 | **Auto-responses** | Keyword → message auto-replies with contains/word/exact matching |
-| **XP &amp; leveling** | Text + voice XP, per-channel multipliers, no-XP roles, level-up announcements, level-based role rewards, `/rank`, `/leaderboard`, admin `/level give\|reset` |
+| **XP &amp; leveling** | Text + voice XP, per-channel multipliers, no-XP roles, level-up announcements, level-based role rewards, `/rank` (text or rendered PNG card), `/leaderboard`, admin `/level give\|reset` |
 | **Economy** | Per-server currency, `/balance`, `/daily`, `/work`, `/pay`, `/shop add\|list\|buy\|remove`, `/inventory`, `/rich` leaderboard, optional `/gamble coinflip\|slots` |
 | **Tickets** | Button-driven private support threads, optional categories with separate staff teams, `/ticket close\|assign`, dashboard list of open/closed tickets |
 | **Stats &amp; analytics** | Stats dashboard tab with member growth (30d), mod-action trends (30d, stacked by type), top moderation targets, and a per-channel × hour activity heatmap |

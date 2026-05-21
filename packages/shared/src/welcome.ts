@@ -18,6 +18,8 @@ export const WelcomeConfigSchema = z.object({
   autoRoleIds: z.array(SnowflakeSchema),
   milestoneEvery: z.number().int().min(1).max(100_000).nullable(),
   milestoneTemplate: z.string().min(1).max(2000).nullable(),
+  cardEnabled: z.boolean(),
+  cardBackgroundUrl: z.string().url().nullable(),
 });
 
 export type WelcomeConfig = z.infer<typeof WelcomeConfigSchema>;
