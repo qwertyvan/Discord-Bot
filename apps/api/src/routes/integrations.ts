@@ -25,6 +25,7 @@ function serializeIntegration(s: IntegrationSubscription) {
     pollInterval: s.pollInterval,
     token: s.token,
     secret: s.secret,
+    twitchUsername: s.twitchUsername,
     enabled: s.enabled,
     createdAt: s.createdAt.toISOString(),
   };
@@ -68,6 +69,19 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
             kind: 'rss',
             rssUrl: req.body.rssUrl,
             pollInterval: req.body.pollInterval ?? 600,
+          },
+        });
+        return serializeIntegration(sub);
+      }
+      if (req.body.kind === 'twitch') {
+        const sub = await app.prisma.integrationSubscription.create({
+          data: {
+            guildId,
+            channelId: req.body.channelId,
+            name: req.body.name,
+            kind: 'twitch',
+            twitchUsername: req.body.twitchUsername.toLowerCase(),
+            pollInterval: req.body.pollInterval ?? 120,
           },
         });
         return serializeIntegration(sub);
@@ -168,6 +182,108 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  // ─── Twitch poll lifecycle ────────────────────────────────────────────
+  app.get(
+    '/twitch/due',
+    {
+      preHandler: app.requireBot(),
+      schema: { querystring: z.object({ limit: z.coerce.number().int().min(1).max(50).default(20) }) },
+    },
+    async (req) => {
+      const now = Date.now();
+      const subs = await app.prisma.integrationSubscription.findMany({
+        where: { kind: 'twitch', enabled: true, twitchUsername: { not: null } },
+        take: req.query.limit,
+      });
+      const due = subs.filter((s) => {
+        const last = s.lastPolledAt?.getTime() ?? 0;
+        return now - last >= s.pollInterval * 1000;
+      });
+      return { integrations: due.map(serializeIntegration) };
+    },
+  );
+
+  app.post(
+    '/integrations/:integrationId/twitch-state',
+    {
+      preHandler: app.requireBot(),
+      schema: {
+        params: z.object({ integrationId: z.string().uuid() }),
+        body: z.object({
+          // The Twitch stream id; null means the streamer is offline.
+          streamId: z.string().nullable().optional(),
+        }),
+      },
+    },
+    async (req) => {
+      const updated = await app.prisma.integrationSubscription.update({
+        where: { id: req.params.integrationId },
+        data: {
+          lastPolledAt: new Date(),
+          // We reuse lastSeenGuid as "last seen stream id" for Twitch.
+          ...(req.body.streamId !== undefined ? { lastSeenGuid: req.body.streamId } : {}),
+        },
+      });
+      return serializeIntegration(updated);
+    },
+  );
+
+  // ─── Credentials (per-guild API keys) ─────────────────────────────────
+  app.get(
+    '/guilds/:guildId/integration-credentials',
+    { preHandler: app.requireBot(), schema: { params: GuildParams } },
+    async (req) => {
+      const rows = await app.prisma.integrationCredential.findMany({
+        where: { guildId: req.params.guildId },
+        orderBy: [{ provider: 'asc' }, { key: 'asc' }],
+      });
+      return {
+        credentials: rows.map((r) => ({
+          guildId: r.guildId,
+          provider: r.provider,
+          key: r.key,
+          hasValue: r.value.length > 0,
+          updatedAt: r.updatedAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  // Bot-side: fetch the decrypted credential value. Caller must already
+  // possess BOT_API_TOKEN. Returns 404 if not set.
+  app.get(
+    '/guilds/:guildId/integration-credentials/:provider/:key/value',
+    {
+      preHandler: app.requireBot(),
+      schema: {
+        params: z.object({
+          guildId: SnowflakeSchema,
+          provider: z.string().min(1).max(32),
+          key: z.string().min(1).max(32),
+        }),
+      },
+    },
+    async (req) => {
+      const row = await app.prisma.integrationCredential.findUnique({
+        where: {
+          guildId_provider_key: {
+            guildId: req.params.guildId,
+            provider: req.params.provider,
+            key: req.params.key,
+          },
+        },
+      });
+      if (!row) throw HttpError.notFound('Credential not set.');
+      const { decryptToken } = await import('../crypto.js');
+      try {
+        const value = decryptToken(row.value, app.config.TOKEN_ENCRYPTION_KEY);
+        return { provider: row.provider, key: row.key, value };
+      } catch {
+        throw HttpError.notFound('Credential corrupt — re-set via the dashboard.');
+      }
+    },
+  );
+
   // ─── Pending posts queue ──────────────────────────────────────────────
   app.get(
     '/posts/due',
@@ -253,7 +369,28 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
         throw HttpError.notFound('Webhook not found.');
       }
 
-      // HMAC validation if secret is set.
+      // GitHub-specific path: detect by X-GitHub-Event and render via the
+      // GitHub payload parser. GitHub signs the raw body, not the parsed
+      // JSON; for v0.15 we rely on the URL token as the credential and
+      // accept payloads without HMAC verification here.
+      const githubEvent = req.headers['x-github-event'];
+      if (typeof githubEvent === 'string') {
+        const { renderGitHubEvent } = await import('../services/github-webhook.js');
+        const embed = renderGitHubEvent(githubEvent, req.body);
+        if (!embed) return reply.code(202).send({ accepted: true, skipped: true });
+        await app.prisma.pendingPost.create({
+          data: {
+            guildId: sub.guildId,
+            channelId: sub.channelId,
+            content: null,
+            embedJson: embed as unknown as Prisma.InputJsonValue,
+            source: `github:${githubEvent}`,
+          },
+        });
+        return reply.code(202).send({ accepted: true });
+      }
+
+      // Generic JSON payload path with optional shared-secret HMAC.
       if (sub.secret) {
         const signature = req.headers['x-signature-256'];
         if (typeof signature !== 'string') {

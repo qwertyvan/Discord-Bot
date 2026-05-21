@@ -38,6 +38,7 @@ model Guild {
   tickets              Ticket[]
   messageActivity      MessageActivity[]
   integrations         IntegrationSubscription[]
+  integrationCredentials IntegrationCredential[]
   pendingPosts         PendingPost[]
   adminActions         AdminAction[]
   scheduledAnnouncements ScheduledAnnouncement[]
@@ -154,17 +155,18 @@ model IntegrationSubscription {
   guildId       String
   channelId     String
   name          String    @db.VarChar(80)
-  // 'rss' or 'webhook'.
+  // 'rss' | 'webhook' | 'twitch'.
   kind          String    @db.VarChar(16)
   // RSS-only:
   rssUrl        String?
   lastSeenGuid  String?
   lastPolledAt  DateTime?
-  pollInterval  Int       @default(600) // seconds between polls
+  pollInterval  Int       @default(600)
   // Webhook-only:
   token         String?   @unique
   secret        String?
-  // Both:
+  // Twitch-only (login name, e.g. "shroud").
+  twitchUsername String?
   enabled       Boolean   @default(true)
   createdAt     DateTime  @default(now())
 
@@ -172,6 +174,23 @@ model IntegrationSubscription {
 
   @@index([guildId])
   @@index([kind, enabled, lastPolledAt])
+}
+
+// Per-guild API credentials for external providers (Twitch, Sightengine,
+// DeepL, etc.). Values are envelope-encrypted via crypto.ts before storage.
+// `provider` + `key` form a per-guild composite (e.g. provider='twitch',
+// key='client_id').
+model IntegrationCredential {
+  guildId    String
+  provider   String   @db.VarChar(32)
+  key        String   @db.VarChar(32)
+  value      String   // encrypted
+  updatedAt  DateTime @updatedAt @default(now())
+
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, provider, key])
+  @@index([guildId, provider])
 }
 
 // Queue of messages to be posted by the bot. Populated by webhook ingress
