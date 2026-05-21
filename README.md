@@ -42,6 +42,7 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Reminders** | `/remindme` personal reminders posted in-channel or DM'd, with `/reminders list`/`cancel` |
 | **Tags** | `/tag add|edit|remove|list|show` canned-content snippets with usage counters |
 | **Auto-responses** | Keyword → message auto-replies with contains/word/exact matching |
+| **XP &amp; leveling** | Text + voice XP, per-channel multipliers, no-XP roles, level-up announcements, level-based role rewards, `/rank`, `/leaderboard`, admin `/level give\|reset` |
 | **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome / verification / reaction-roles / logging / policy config screens |
 
 ## Project layout

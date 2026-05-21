@@ -27,7 +27,47 @@ model Guild {
   reminders            Reminder[]
   tags                 Tag[]
   autoResponses        AutoResponse[]
+  levelConfig          LevelConfig?
+  memberLevels         MemberLevel[]
   caseCounter          CaseCounter?
+}
+
+model LevelConfig {
+  guildId               String   @id
+  enabled               Boolean  @default(false)
+  // XP awarded for each non-bot message (subject to cooldown).
+  perMessageXp          Int      @default(15)
+  // Minimum seconds between XP-eligible messages from the same user.
+  textCooldownSeconds   Int      @default(60)
+  // XP awarded per minute of voice activity.
+  voiceXpPerMinute      Int      @default(5)
+  // Channel for level-up announcements; null = reply in-place.
+  levelUpChannelId      String?
+  // Defaults to "🎉 {user} just reached level {level}!".
+  levelUpTemplate       String?
+  // JSON: { "channelId": multiplier (number) }
+  channelMultipliers    Json     @default("{}")
+  // JSON: [{ "level": N, "roleId": "..." }]
+  roleRewards           Json     @default("[]")
+  // JSON: array of role IDs whose members don't earn XP.
+  noXpRoleIds           Json     @default("[]")
+  updatedAt             DateTime @updatedAt
+
+  guild                 Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model MemberLevel {
+  guildId        String
+  userId         String
+  xp             Int       @default(0)
+  lastTextXpAt   DateTime?
+  voiceMinutes   Int       @default(0)
+  updatedAt      DateTime  @updatedAt @default(now())
+
+  guild          Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, xp(sort: Desc)])
 }
 
 model Poll {

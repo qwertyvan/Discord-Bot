@@ -31,6 +31,7 @@ export default async function GuildLayout({
     { href: `${base}/welcome`, label: 'Welcome' },
     { href: `${base}/verification`, label: 'Verify' },
     { href: `${base}/reaction-roles`, label: 'Role panels' },
+    { href: `${base}/leveling`, label: 'Leveling' },
     { href: `${base}/logging`, label: 'Logging' },
     { href: `${base}/policy`, label: 'Policy' },
   ];

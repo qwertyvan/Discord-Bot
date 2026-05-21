@@ -2,6 +2,7 @@ import type { SlashCommand } from '../command.js';
 import { generalCommands } from './general/index.js';
 import { moderationCommands } from './moderation/index.js';
 import { onboardingCommands } from './onboarding/index.js';
+import { levelingCommands } from './leveling/index.js';
 import { utilityCommands } from './utility/index.js';
 import { funCommands } from './fun/index.js';
 
@@ -24,6 +25,7 @@ export function getCommandRegistry(): CommandRegistry {
     general: generalCommands,
     moderation: moderationCommands,
     onboarding: onboardingCommands,
+    leveling: levelingCommands,
     utility: utilityCommands,
     fun: funCommands,
   };

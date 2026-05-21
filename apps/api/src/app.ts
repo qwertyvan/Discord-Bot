@@ -28,6 +28,7 @@ import { pollsRoutes } from './routes/polls.js';
 import { remindersRoutes } from './routes/reminders.js';
 import { tagsRoutes } from './routes/tags.js';
 import { autoResponsesRoutes } from './routes/auto-responses.js';
+import { levelingRoutes } from './routes/leveling.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -76,6 +77,7 @@ export async function buildApp() {
   await app.register(remindersRoutes);
   await app.register(tagsRoutes);
   await app.register(autoResponsesRoutes);
+  await app.register(levelingRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);

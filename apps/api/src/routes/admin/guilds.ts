@@ -7,10 +7,12 @@ import {
   ModActionTypeSchema,
   SnowflakeSchema,
   UpdateAutomodConfigSchema,
+  UpdateLevelConfigSchema,
   UpdateLoggingConfigSchema,
   UpdateVerificationConfigSchema,
   UpdateWarningPolicySchema,
   UpdateWelcomeConfigSchema,
+  levelFromXp,
 } from '@discord-bot/shared';
 import { HttpError } from '../../errors.js';
 import { DiscordAuthError } from '../../discord.js';
@@ -568,6 +570,111 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
           reason: h.reason,
           payload: h.payload as Record<string, unknown>,
           createdAt: h.createdAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  // ─── Leveling ─────────────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/level-config',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const cfg = await app.prisma.levelConfig.findUnique({ where: { guildId } });
+      return {
+        guildId,
+        enabled: cfg?.enabled ?? false,
+        perMessageXp: cfg?.perMessageXp ?? 15,
+        textCooldownSeconds: cfg?.textCooldownSeconds ?? 60,
+        voiceXpPerMinute: cfg?.voiceXpPerMinute ?? 5,
+        levelUpChannelId: cfg?.levelUpChannelId ?? null,
+        levelUpTemplate: cfg?.levelUpTemplate ?? null,
+        channelMultipliers: (cfg?.channelMultipliers as Record<string, number>) ?? {},
+        roleRewards: (cfg?.roleRewards as Array<{ level: number; roleId: string }>) ?? [],
+        noXpRoleIds: (cfg?.noXpRoleIds as string[]) ?? [],
+      };
+    },
+  );
+
+  app.put(
+    '/admin/guilds/:guildId/level-config',
+    { schema: { params: Params, body: UpdateLevelConfigSchema } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const patch = req.body;
+      const update: Record<string, unknown> = {};
+      for (const k of [
+        'enabled',
+        'perMessageXp',
+        'textCooldownSeconds',
+        'voiceXpPerMinute',
+        'levelUpChannelId',
+        'levelUpTemplate',
+        'channelMultipliers',
+        'roleRewards',
+        'noXpRoleIds',
+      ] as const) {
+        const v = (patch as Record<string, unknown>)[k];
+        if (v !== undefined) update[k] = v;
+      }
+      const cfg = await app.prisma.levelConfig.upsert({
+        where: { guildId },
+        update,
+        create: {
+          guildId,
+          enabled: patch.enabled ?? false,
+          perMessageXp: patch.perMessageXp ?? 15,
+          textCooldownSeconds: patch.textCooldownSeconds ?? 60,
+          voiceXpPerMinute: patch.voiceXpPerMinute ?? 5,
+          levelUpChannelId: patch.levelUpChannelId ?? null,
+          levelUpTemplate: patch.levelUpTemplate ?? null,
+          channelMultipliers: patch.channelMultipliers ?? {},
+          roleRewards: patch.roleRewards ?? [],
+          noXpRoleIds: patch.noXpRoleIds ?? [],
+        },
+      });
+      return {
+        guildId: cfg.guildId,
+        enabled: cfg.enabled,
+        perMessageXp: cfg.perMessageXp,
+        textCooldownSeconds: cfg.textCooldownSeconds,
+        voiceXpPerMinute: cfg.voiceXpPerMinute,
+        levelUpChannelId: cfg.levelUpChannelId,
+        levelUpTemplate: cfg.levelUpTemplate,
+        channelMultipliers: cfg.channelMultipliers as Record<string, number>,
+        roleRewards: cfg.roleRewards as Array<{ level: number; roleId: string }>,
+        noXpRoleIds: cfg.noXpRoleIds as string[],
+      };
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/leaderboard',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({ limit: z.coerce.number().int().min(1).max(100).default(25) }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const top = await app.prisma.memberLevel.findMany({
+        where: { guildId },
+        orderBy: { xp: 'desc' },
+        take: req.query.limit,
+      });
+      return {
+        entries: top.map((m, i) => ({
+          rank: i + 1,
+          guildId,
+          userId: m.userId,
+          xp: m.xp,
+          voiceMinutes: m.voiceMinutes,
+          level: levelFromXp(m.xp),
         })),
       };
     },
