@@ -93,7 +93,9 @@ export function registerAutomodEvents(client: Client): void {
     if (!cfg?.enabled) return;
     if (isExempt(message.member, cfg, message.channelId)) return;
 
-    const hit = evaluateMessageRules(message, cfg.rules, antispam);
+    const hit =
+      evaluateMessageRules(message, cfg.rules, antispam) ||
+      (await evaluateAsyncRules(message, cfg.rules));
     if (!hit) return;
 
     const ruleCfg = (cfg.rules as Record<string, { action?: AutomodAction; durationMs?: number } | undefined>)[
@@ -197,4 +199,58 @@ async function triggerRaidLockdown(guild: Guild, threshold: number, windowSecond
       reason: `Raid lockdown: ${threshold} joins within ${windowSeconds}s. Locked ${locked} channels.`,
     })
     .catch(() => {});
+}
+
+const URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
+const IMAGE_EXT = /\.(?:png|jpe?g|webp|gif|bmp)(?:\?.*)?$/i;
+
+async function evaluateAsyncRules(
+  message: Message,
+  rules: AutomodConfig['rules'],
+): Promise<RuleHit | null> {
+  // Safe Browsing: collect URLs in content, check, hit on any match.
+  if (rules.safeBrowsing?.enabled && message.content) {
+    const urls = [...message.content.matchAll(URL_PATTERN)].map((m) => m[0]);
+    if (urls.length > 0) {
+      try {
+        const { checkUrls } = await import('../integrations/safe-browsing.js');
+        const flagged = await checkUrls(message.guildId!, urls);
+        if (flagged.length > 0) {
+          return {
+            rule: 'safeBrowsing',
+            reason: `URL flagged by Safe Browsing: ${flagged[0]}`,
+            payload: { urls: flagged },
+          };
+        }
+      } catch (err) {
+        log.warn('Safe Browsing check failed', { err: String(err) });
+      }
+    }
+  }
+
+  // NSFW image: scan each image attachment.
+  if (rules.nsfwImage?.enabled && message.attachments.size > 0) {
+    const imageAttachments = [...message.attachments.values()].filter(
+      (a) => a.url && (a.contentType?.startsWith('image/') || IMAGE_EXT.test(a.url)),
+    );
+    if (imageAttachments.length > 0) {
+      try {
+        const { classifyImage } = await import('../integrations/sightengine.js');
+        for (const att of imageAttachments) {
+          const result = await classifyImage(message.guildId!, att.url);
+          if (result?.flagged) {
+            return {
+              rule: 'nsfwImage',
+              reason: result.reason ?? 'NSFW image classifier flagged content.',
+              payload: { url: att.url, score: result.highestScore },
+            };
+          }
+        }
+      } catch (err) {
+        log.warn('NSFW image check failed', { err: String(err) });
+      }
+    }
+  }
+
+  return null;
 }

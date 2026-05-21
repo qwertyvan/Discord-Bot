@@ -150,6 +150,20 @@ model UserTimezone {
   updatedAt DateTime @updatedAt
 }
 
+// Self-hosted URL shortener entries. `slug` is the path served by
+// `/s/:slug` (302 → target, increments `uses`).
+model ShortLink {
+  id        String   @id @default(uuid())
+  slug      String   @unique @db.VarChar(32)
+  guildId   String?
+  target    String   @db.VarChar(2048)
+  createdBy String
+  uses      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([slug])
+}
+
 model IntegrationSubscription {
   id            String    @id @default(uuid())
   guildId       String
