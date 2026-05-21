@@ -248,6 +248,15 @@ model TicketConfig {
   staffRoleId         String?
   defaultSlaSeconds   Int?
   transcriptChannelId String?
+  // Seconds of staff silence after the user's last message before the bot
+  // pings the staff role with an SLA reminder. Null disables.
+  slaReminderSeconds  Int?
+  // Seconds of total ticket-thread inactivity before the bot auto-closes.
+  // Null disables.
+  idleAutoCloseSeconds Int?
+  // When true, on close the bot uploads an HTML transcript to
+  // transcriptChannelId (or the ticket thread if not set).
+  transcriptsEnabled  Boolean  @default(false)
   updatedAt           DateTime @updatedAt
 
   guild               Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
@@ -272,26 +281,31 @@ model TicketCategory {
 }
 
 model Ticket {
-  id           String           @id @default(uuid())
-  guildId      String
-  categoryId   String?
-  userId       String
-  channelId    String
-  number       Int
-  status       String           @default("open") @db.VarChar(16)
-  subject      String?          @db.VarChar(200)
-  assignedTo   String?
-  openedAt     DateTime         @default(now())
-  closedAt     DateTime?
-  closedBy     String?
-  closeReason  String?          @db.VarChar(500)
+  id              String           @id @default(uuid())
+  guildId         String
+  categoryId      String?
+  userId          String
+  channelId       String
+  number          Int
+  status          String           @default("open") @db.VarChar(16)
+  subject         String?          @db.VarChar(200)
+  assignedTo      String?
+  openedAt        DateTime         @default(now())
+  closedAt        DateTime?
+  closedBy        String?
+  closeReason     String?          @db.VarChar(500)
+  // Updated whenever a message is posted in the ticket thread.
+  lastActivityAt  DateTime?
+  // Set when the bot fires the SLA-reminder ping so we don't re-fire.
+  slaReminderAt   DateTime?
 
-  guild        Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  category     TicketCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  guild           Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  category        TicketCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@unique([guildId, number])
   @@index([guildId, status, openedAt])
   @@index([guildId, userId, openedAt])
+  @@index([status, lastActivityAt])
 }
 
 model EconomyConfig {

@@ -381,6 +381,27 @@ export const api = {
     query?: { status?: 'open' | 'closed'; userId?: string; limit?: number },
   ) =>
     call<{ tickets: Ticket[] }>(`/guilds/${guildId}/tickets`, query ? { query } : {}),
+  bumpTicketActivity: (guildId: string, channelId: string) =>
+    call<void>(`/guilds/${guildId}/tickets/by-channel/${channelId}/activity`, { method: 'POST' }),
+  slaDueTickets: () =>
+    call<{ tickets: Array<Ticket & { staffRoleId: string | null }> }>(`/tickets/sla-due`),
+  markSlaReminderSent: (ticketId: string) =>
+    call<void>(`/tickets/${ticketId}/sla-reminder-sent`, { method: 'POST' }),
+  idleDueTickets: () =>
+    call<{
+      tickets: Array<
+        Ticket & { transcriptsEnabled: boolean; transcriptChannelId: string | null }
+      >;
+    }>(`/tickets/idle-due`),
+  getTicketStats: (guildId: string) =>
+    call<{
+      guildId: string;
+      openCount: number;
+      closedCount: number;
+      openedLast7d: number;
+      closedLast7d: number;
+      avgResolutionSeconds: number;
+    }>(`/guilds/${guildId}/tickets/stats`),
 
   // Message activity flush
   flushMessageActivity: (

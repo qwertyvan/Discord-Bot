@@ -8,8 +8,10 @@ import {
 import { api, ApiError } from './api-client.js';
 import { log } from './logger.js';
 import { pollMessagePayload } from './util/poll-render.js';
+import { AttachmentBuilder } from 'discord.js';
 import { fetchFeed } from './integrations/rss.js';
 import { fetchStream } from './integrations/twitch.js';
+import { renderTranscript } from './integrations/ticket-transcript.js';
 
 const REMINDER_TICK_MS = 10_000;
 const POLL_TICK_MS = 30_000;
@@ -18,6 +20,8 @@ const RSS_TICK_MS = 60_000;
 const TWITCH_TICK_MS = 60_000;
 const ANNOUNCE_TICK_MS = 30_000;
 const BIRTHDAY_TICK_MS = 5 * 60_000;
+const SLA_TICK_MS = 60_000;
+const IDLE_TICK_MS = 5 * 60_000;
 
 export function startScheduler(client: Client): void {
   setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
@@ -27,6 +31,8 @@ export function startScheduler(client: Client): void {
   setInterval(() => pollTwitchStreams().catch(noop), TWITCH_TICK_MS);
   setInterval(() => fireDueAnnouncements().catch(noop), ANNOUNCE_TICK_MS);
   setInterval(() => fireBirthdays(client).catch(noop), BIRTHDAY_TICK_MS);
+  setInterval(() => sweepSlaReminders(client).catch(noop), SLA_TICK_MS);
+  setInterval(() => sweepIdleTickets(client).catch(noop), IDLE_TICK_MS);
   setTimeout(() => {
     fireDueReminders(client).catch(noop);
     closeDuePolls(client).catch(noop);
@@ -35,6 +41,8 @@ export function startScheduler(client: Client): void {
     pollTwitchStreams().catch(noop);
     fireDueAnnouncements().catch(noop);
     fireBirthdays(client).catch(noop);
+    sweepSlaReminders(client).catch(noop);
+    sweepIdleTickets(client).catch(noop);
   }, 5_000);
 }
 
@@ -300,6 +308,95 @@ async function pollTwitchStreams(): Promise<void> {
       }
     } catch (err) {
       log.warn('Twitch poll failed', { id: sub.id, err: String(err) });
+    }
+  }
+}
+
+async function sweepSlaReminders(client: Client): Promise<void> {
+  let due;
+  try {
+    due = await api.slaDueTickets();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('slaDueTickets API error', { status: err.status });
+    return;
+  }
+  for (const ticket of due.tickets) {
+    try {
+      const guild = client.guilds.cache.get(ticket.guildId);
+      if (!guild) continue;
+      const channel = guild.channels.cache.get(ticket.channelId);
+      if (!channel || !channel.isTextBased()) continue;
+      const mention = ticket.staffRoleId ? `<@&${ticket.staffRoleId}> ` : '';
+      await (channel as TextChannel).send({
+        content: `${mention}⏰ Ticket #${ticket.number} has been waiting for a staff response.`,
+        allowedMentions: ticket.staffRoleId ? { roles: [ticket.staffRoleId] } : { parse: [] },
+      });
+      await api.markSlaReminderSent(ticket.id).catch(() => {});
+    } catch (err) {
+      log.warn('SLA reminder failed', { ticketId: ticket.id, err: String(err) });
+    }
+  }
+}
+
+async function sweepIdleTickets(client: Client): Promise<void> {
+  let due;
+  try {
+    due = await api.idleDueTickets();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('idleDueTickets API error', { status: err.status });
+    return;
+  }
+  for (const ticket of due.tickets) {
+    try {
+      const guild = client.guilds.cache.get(ticket.guildId);
+      if (!guild) continue;
+      const channel = guild.channels.cache.get(ticket.channelId);
+      if (!channel || !channel.isTextBased()) continue;
+
+      let transcriptBuffer: Buffer | null = null;
+      if (ticket.transcriptsEnabled) {
+        try {
+          const html = await renderTranscript(channel as TextChannel, {
+            title: `Ticket #${ticket.number}`,
+            openedAt: ticket.openedAt,
+            closedAt: new Date().toISOString(),
+            closedBy: 'auto-close (idle)',
+          });
+          transcriptBuffer = Buffer.from(html, 'utf8');
+        } catch (err) {
+          log.warn('Transcript render failed', { ticketId: ticket.id, err: String(err) });
+        }
+      }
+
+      await (channel as TextChannel).send({
+        content: `🔒 Auto-closing ticket #${ticket.number} due to inactivity.`,
+        allowedMentions: { parse: [] },
+      });
+
+      if (transcriptBuffer) {
+        const target = ticket.transcriptChannelId
+          ? (guild.channels.cache.get(ticket.transcriptChannelId) as TextChannel | undefined)
+          : (channel as TextChannel);
+        if (target?.isTextBased()) {
+          await (target as TextChannel)
+            .send({
+              content: `📝 Transcript for ticket #${ticket.number}`,
+              files: [new AttachmentBuilder(transcriptBuffer, { name: `ticket-${ticket.number}.html` })],
+            })
+            .catch(() => {});
+        }
+      }
+
+      await api.updateTicket(ticket.guildId, ticket.id, {
+        status: 'closed',
+        closedBy: client.user!.id,
+        closeReason: 'Auto-closed (idle)',
+      });
+      if ('isThread' in channel && channel.isThread()) {
+        await channel.setArchived(true, 'Auto-close idle ticket').catch(() => {});
+      }
+    } catch (err) {
+      log.warn('Idle auto-close failed', { ticketId: ticket.id, err: String(err) });
     }
   }
 }

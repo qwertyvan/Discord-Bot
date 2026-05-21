@@ -9,6 +9,9 @@ export const TicketConfigSchema = z.object({
   staffRoleId: SnowflakeSchema.nullable(),
   defaultSlaSeconds: z.number().int().min(60).max(7 * 86_400).nullable(),
   transcriptChannelId: SnowflakeSchema.nullable(),
+  slaReminderSeconds: z.number().int().min(60).max(7 * 86_400).nullable(),
+  idleAutoCloseSeconds: z.number().int().min(300).max(30 * 86_400).nullable(),
+  transcriptsEnabled: z.boolean(),
 });
 
 export type TicketConfig = z.infer<typeof TicketConfigSchema>;
@@ -54,6 +57,8 @@ export const TicketSchema = z.object({
   closedAt: z.string().datetime().nullable(),
   closedBy: SnowflakeSchema.nullable(),
   closeReason: z.string().max(500).nullable(),
+  lastActivityAt: z.string().datetime().nullable(),
+  slaReminderAt: z.string().datetime().nullable(),
 });
 
 export type Ticket = z.infer<typeof TicketSchema>;
