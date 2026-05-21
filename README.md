@@ -47,7 +47,8 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Tickets** | Button-driven private support threads, optional categories with separate staff teams, `/ticket close\|assign`, dashboard list of open/closed tickets |
 | **Stats &amp; analytics** | Stats dashboard tab with member growth (30d), mod-action trends (30d, stacked by type), top moderation targets, and a per-channel × hour activity heatmap |
 | **Integrations** | RSS feed subscriptions (YouTube, Reddit, blogs); incoming webhook endpoints with optional HMAC-SHA256 signing; **GitHub** webhook payload parsing (PRs / issues / pushes / releases as rich embeds); **Twitch** live notifications (requires `twitch.client_id` / `twitch.client_secret` credentials per guild) |
-| **Misc utility** | `/time show\|set\|clear` per-user IANA timezone, `/preview <url>` link-preview unfurler |
+| **Misc utility** | `/time show\|set\|clear` per-user IANA timezone, `/preview <url>` link-preview unfurler, `/translate` (DeepL), `/shorten` (self-hosted; `/s/:slug` redirects) |
+| **Content safety** | Sightengine NSFW image classifier and Google Safe Browsing URL check wired into the automod pipeline — fire as standard automod hits when the corresponding credentials are set per guild |
 | **Scheduling** | `/announce schedule\|list\|cancel` one-shot or recurring announcements, `/birthday set\|show\|clear` with daily auto-announce, `/event create\|cancel\|upcoming` with yes / maybe / no RSVP buttons |
 | **Dashboard polish** | Per-guild admin-action audit log, JSON config export endpoint, sensible-default Config tab |
 | **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome / verification / reaction-roles / logging / policy / leveling / economy / tickets / stats config screens |
