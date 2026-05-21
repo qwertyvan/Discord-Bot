@@ -13,8 +13,13 @@ model Guild {
   iconUrl   String?
   addedAt   DateTime @default(now())
 
-  welcome   WelcomeConfig?
-  warnings  Warning[]
+  welcome         WelcomeConfig?
+  loggingConfig   LoggingConfig?
+  warningPolicy   WarningPolicy?
+  modActions      ModAction[]
+  modNotes        ModNote[]
+  auditEvents     AuditEvent[]
+  caseCounter     CaseCounter?
 }
 
 model WelcomeConfig {
@@ -28,18 +33,122 @@ model WelcomeConfig {
   guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
-model Warning {
+// Unified moderation action log. Every kick/ban/timeout/warn/etc. produces
+// exactly one row here, carrying a per-guild sequential case number so
+// humans can reference actions by `#42` style IDs in conversation.
+model ModAction {
+  id           String        @id @default(uuid())
+  guildId      String
+  caseNumber   Int
+  type         ModActionType
+  userId       String        // target user
+  moderatorId  String
+  reason       String        @db.VarChar(500)
+  // Optional structured fields per action type.
+  durationMs   Int?          // timeout / mute duration
+  expiresAt    DateTime?     // when the action lapses (warnings, timeouts)
+  category     String?       // freeform category for warnings/notes
+  severity     Int?          @default(1)
+  active       Boolean       @default(true) // false when superseded/expired/deleted
+  createdAt    DateTime      @default(now())
+
+  guild        Guild         @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, caseNumber])
+  @@index([guildId, createdAt])
+  @@index([guildId, userId, createdAt])
+  @@index([guildId, type])
+}
+
+enum ModActionType {
+  WARN
+  KICK
+  BAN
+  UNBAN
+  SOFTBAN
+  TIMEOUT
+  UNTIMEOUT
+  MUTE
+  UNMUTE
+  NOTE
+}
+
+// Per-guild monotonically-increasing case counter. Held in its own table so we
+// can atomically increment without locking the entire ModAction table.
+model CaseCounter {
+  guildId  String @id
+  next     Int    @default(1)
+
+  guild    Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Private mod-only notes about a user. Not visible to the user themselves.
+model ModNote {
   id           String   @id @default(uuid())
   guildId      String
-  userId       String   // target user snowflake
-  moderatorId  String   // issuing moderator snowflake
-  reason       String   @db.VarChar(500)
+  userId       String
+  moderatorId  String
+  content      String   @db.VarChar(1000)
   createdAt    DateTime @default(now())
 
   guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
-  @@index([guildId, createdAt])
   @@index([guildId, userId, createdAt])
+}
+
+// Per-guild logging configuration. `events` is a JSON object mapping
+// AuditEventType → boolean; missing keys default to true.
+model LoggingConfig {
+  guildId    String   @id
+  enabled    Boolean  @default(false)
+  channelId  String?
+  events     Json     @default("{}")
+  updatedAt  DateTime @updatedAt
+
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id         String           @id @default(uuid())
+  guildId    String
+  type       AuditEventType
+  userId     String?
+  channelId  String?
+  payload    Json             @default("{}")
+  createdAt  DateTime         @default(now())
+
+  guild      Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, createdAt])
+  @@index([guildId, type, createdAt])
+  @@index([guildId, userId, createdAt])
+}
+
+enum AuditEventType {
+  MESSAGE_DELETE
+  MESSAGE_EDIT
+  MEMBER_JOIN
+  MEMBER_LEAVE
+  MEMBER_ROLE_ADD
+  MEMBER_ROLE_REMOVE
+  MEMBER_NICKNAME_CHANGE
+  CHANNEL_CREATE
+  CHANNEL_DELETE
+  VOICE_JOIN
+  VOICE_LEAVE
+  MOD_ACTION
+}
+
+// Warning policy: auto-expiry and threshold-based escalation.
+// `thresholds` is a JSON array of { count, action, durationMs? }.
+model WarningPolicy {
+  guildId         String   @id
+  expireDays      Int?     // warnings older than this are marked inactive
+  thresholds      Json     @default("[]")
+  muteRoleId      String?  // optional role used by /mute when set
+  updatedAt       DateTime @updatedAt
+
+  guild           Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model AdminUser {

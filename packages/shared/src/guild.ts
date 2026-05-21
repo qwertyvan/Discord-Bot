@@ -14,7 +14,10 @@ export const GuildStatsSchema = z.object({
   guildId: SnowflakeSchema,
   warningCount: z.number().int().nonnegative(),
   warningsLast7d: z.number().int().nonnegative(),
+  modActionsLast7d: z.number().int().nonnegative(),
+  activeWarnings: z.number().int().nonnegative(),
   welcomeEnabled: z.boolean(),
+  loggingEnabled: z.boolean(),
 });
 
 export type GuildStats = z.infer<typeof GuildStatsSchema>;
