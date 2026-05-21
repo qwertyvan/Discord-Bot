@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Guild {
+  id        String   @id // Discord snowflake
+  name      String
+  iconUrl   String?
+  addedAt   DateTime @default(now())
+
+  welcome   WelcomeConfig?
+  warnings  Warning[]
+}
+
+model WelcomeConfig {
+  guildId       String   @id
+  enabled       Boolean  @default(false)
+  channelId     String?
+  joinTemplate  String?
+  leaveTemplate String?
+  updatedAt     DateTime @updatedAt
+
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model Warning {
+  id           String   @id @default(uuid())
+  guildId      String
+  userId       String   // target user snowflake
+  moderatorId  String   // issuing moderator snowflake
+  reason       String   @db.VarChar(500)
+  createdAt    DateTime @default(now())
+
+  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, createdAt])
+  @@index([guildId, userId, createdAt])
+}
+
+model AdminUser {
+  discordId       String    @id
+  username        String
+  globalName      String?
+  avatarUrl       String?
+  // Discord OAuth2 access token; used only to list the user's manageable guilds
+  // via /users/@me/guilds. Stored plaintext; treat the DB as confidential. If
+  // Discord returns 401 we drop the session and force a re-login (see
+  // src/guild-permissions.ts and src/routes/admin/guilds.ts).
+  accessToken     String
+  tokenExpiresAt  DateTime
+  lastSeenAt      DateTime  @default(now())
+
+  sessions        Session[]
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user       AdminUser @relation(fields: [userId], references: [discordId], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
