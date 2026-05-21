@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache';
 import { serverFetch } from '@/lib/api';
 
 interface AdminActionRow {
@@ -27,20 +28,29 @@ export default async function ConfigAuditPage({
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
           Export / import
         </h2>
-        <div className="space-y-3">
+        <div className="flex flex-wrap gap-3">
           <a
             href={`/dashboard/${guildId}/config/export`}
-            className="inline-block rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
+            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
           >
             Download config as JSON
           </a>
-          <p className="text-xs text-slate-500">
-            Backup of welcome / logging / warning policy / automod / verification / leveling /
-            economy / tickets / shop / reaction roles / tags / auto-responses. Excludes per-user
-            state (warnings, balances, XP, tickets).
-          </p>
+          <a
+            href={`${process.env.NEXT_PUBLIC_API_BASE_URL ?? ''}/admin/guilds/${guildId}/events.ics`}
+            className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
+          >
+            Download events.ics
+          </a>
         </div>
+        <p className="mt-3 text-xs text-slate-500">
+          JSON export covers welcome / logging / warning policy / automod / verification / leveling /
+          economy / tickets / shop / reaction roles / tags / auto-responses. ICS export contains
+          every event (past + upcoming) for calendar import.
+        </p>
       </section>
+
+      <ImportSection guildId={guildId} />
+
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
@@ -79,5 +89,65 @@ export default async function ConfigAuditPage({
         )}
       </section>
     </div>
+  );
+}
+
+async function ImportSection({ guildId }: { guildId: string }) {
+  async function runImport(formData: FormData): Promise<void> {
+    'use server';
+    const gid = String(formData.get('guildId'));
+    const dryRun = formData.get('dryRun') === 'on';
+    const raw = String(formData.get('payload') ?? '').trim();
+    if (!raw) return;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    await serverFetch(`/admin/guilds/${gid}/import`, {
+      method: 'POST',
+      body: { payload, dryRun },
+    });
+    revalidatePath(`/dashboard/${gid}/config`);
+  }
+
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+        Import config
+      </h2>
+      <p className="mb-3 text-xs text-slate-500">
+        Paste the JSON from <em>Download config</em>. Per-guild config sections (welcome, logging,
+        warning policy, automod, verification, leveling, economy, ticket config) are upserted.
+        Collection sections (shop items, reaction-role panels, tags, auto-responses, ticket
+        categories) are intentionally skipped — their delete-then-insert semantics warrant a
+        diff UX that isn't built yet.
+      </p>
+      <form action={runImport} className="space-y-3">
+        <input type="hidden" name="guildId" value={guildId} />
+        <textarea
+          name="payload"
+          rows={14}
+          placeholder='{"welcome": { ... }, ... }'
+          className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs"
+        />
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="dryRun"
+            defaultChecked
+            className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-discord"
+          />
+          <span>Dry-run (validate only — uncheck to actually apply)</span>
+        </label>
+        <button
+          type="submit"
+          className="rounded-lg bg-discord px-4 py-2 text-sm font-medium text-white hover:bg-discord-dark"
+        >
+          Run import
+        </button>
+      </form>
+    </section>
   );
 }

@@ -1125,6 +1125,221 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  // ─── Config import (per-guild-PK sections) ──────────────────────────
+  app.post(
+    '/admin/guilds/:guildId/import',
+    {
+      schema: {
+        params: Params,
+        body: z.object({
+          // Pass-through; we only validate the sub-objects when we apply them.
+          payload: z.record(z.unknown()),
+          dryRun: z.boolean().default(false),
+        }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const payload = req.body.payload as Record<string, unknown>;
+      const dryRun = req.body.dryRun;
+
+      const sections: Array<{
+        key: string;
+        present: boolean;
+        applied: boolean;
+        note?: string;
+      }> = [];
+
+      async function applyUpsert(
+        key: string,
+        prismaUpsert: (data: Record<string, unknown>) => Promise<unknown>,
+      ): Promise<void> {
+        const raw = payload[key];
+        if (!raw || typeof raw !== 'object') {
+          sections.push({ key, present: false, applied: false });
+          return;
+        }
+        if (dryRun) {
+          sections.push({ key, present: true, applied: false, note: 'dry-run' });
+          return;
+        }
+        try {
+          // Strip guildId/updatedAt from the imported row — we set those ourselves.
+          const data: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+          delete data.guildId;
+          delete data.updatedAt;
+          delete data.createdAt;
+          await prismaUpsert(data);
+          sections.push({ key, present: true, applied: true });
+        } catch (err) {
+          sections.push({
+            key,
+            present: true,
+            applied: false,
+            note: `error: ${(err as Error).message.slice(0, 120)}`,
+          });
+        }
+      }
+
+      await applyUpsert('welcome', (data) =>
+        app.prisma.welcomeConfig.upsert({
+          where: { guildId },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          update: data as any,
+          create: { guildId, ...data } as never,
+        }),
+      );
+      await applyUpsert('logging', (data) =>
+        app.prisma.loggingConfig.upsert({
+          where: { guildId },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          update: data as any,
+          create: { guildId, ...data } as never,
+        }),
+      );
+      await applyUpsert('warningPolicy', (data) =>
+        app.prisma.warningPolicy.upsert({
+          where: { guildId },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          update: data as any,
+          create: { guildId, ...data } as never,
+        }),
+      );
+      await applyUpsert('automod', (data) =>
+        app.prisma.automodConfig.upsert({
+          where: { guildId },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          update: data as any,
+          create: { guildId, ...data } as never,
+        }),
+      );
+      await applyUpsert('verification', (data) =>
+        app.prisma.verificationConfig.upsert({
+          where: { guildId },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          update: data as any,
+          create: { guildId, ...data } as never,
+        }),
+      );
+      await applyUpsert('leveling', (data) =>
+        app.prisma.levelConfig.upsert({
+          where: { guildId },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          update: data as any,
+          create: { guildId, ...data } as never,
+        }),
+      );
+      await applyUpsert('economy', (data) =>
+        app.prisma.economyConfig.upsert({
+          where: { guildId },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          update: data as any,
+          create: { guildId, ...data } as never,
+        }),
+      );
+
+      // Nested under tickets: only the config row is applied here.
+      const ticketsBlock = payload.tickets as { config?: unknown } | undefined;
+      if (ticketsBlock?.config && typeof ticketsBlock.config === 'object') {
+        const data: Record<string, unknown> = { ...(ticketsBlock.config as Record<string, unknown>) };
+        delete data.guildId;
+        delete data.updatedAt;
+        if (!dryRun) {
+          try {
+            await app.prisma.ticketConfig.upsert({
+              where: { guildId },
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              update: data as any,
+              create: { guildId, ...data } as never,
+            });
+            sections.push({ key: 'tickets.config', present: true, applied: true });
+          } catch (err) {
+            sections.push({
+              key: 'tickets.config',
+              present: true,
+              applied: false,
+              note: `error: ${(err as Error).message.slice(0, 120)}`,
+            });
+          }
+        } else {
+          sections.push({ key: 'tickets.config', present: true, applied: false, note: 'dry-run' });
+        }
+      } else {
+        sections.push({ key: 'tickets.config', present: false, applied: false });
+      }
+
+      // These collection-style sections are intentionally skipped in v0.19 —
+      // their delete-then-insert semantics warrant a richer diff UX.
+      for (const key of [
+        'tickets.categories',
+        'shop',
+        'reactionRolePanels',
+        'tags',
+        'autoResponses',
+      ]) {
+        sections.push({
+          key,
+          present: Object.prototype.hasOwnProperty.call(payload, key) || key.startsWith('tickets.'),
+          applied: false,
+          note: 'skipped (collection import not yet supported)',
+        });
+      }
+
+      return { dryRun, sections };
+    },
+  );
+
+  // ─── Calendar (.ics) export of upcoming events ───────────────────────
+  app.get(
+    '/admin/guilds/:guildId/events.ics',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const events = await app.prisma.event.findMany({
+        where: { guildId },
+        orderBy: { startsAt: 'asc' },
+      });
+
+      const lines: string[] = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//discord-bot//events//EN',
+        'CALSCALE:GREGORIAN',
+      ];
+      const format = (d: Date) =>
+        d
+          .toISOString()
+          .replace(/[-:]/g, '')
+          .replace(/\.\d{3}/, '');
+      const escape = (s: string) =>
+        s
+          .replace(/\\/g, '\\\\')
+          .replace(/;/g, '\\;')
+          .replace(/,/g, '\\,')
+          .replace(/\n/g, '\\n');
+      for (const e of events) {
+        lines.push('BEGIN:VEVENT');
+        lines.push(`UID:${e.id}@discord-bot`);
+        lines.push(`DTSTAMP:${format(e.createdAt)}`);
+        lines.push(`DTSTART:${format(e.startsAt)}`);
+        if (e.endsAt) lines.push(`DTEND:${format(e.endsAt)}`);
+        else lines.push(`DURATION:PT1H`);
+        lines.push(`SUMMARY:${escape(e.title)}`);
+        if (e.description) lines.push(`DESCRIPTION:${escape(e.description)}`);
+        if (e.location) lines.push(`LOCATION:${escape(e.location)}`);
+        lines.push('END:VEVENT');
+      }
+      lines.push('END:VCALENDAR');
+
+      return reply
+        .header('content-type', 'text/calendar; charset=utf-8')
+        .header('content-disposition', `attachment; filename="guild-${guildId}-events.ics"`)
+        .send(lines.join('\r\n'));
+    },
+  );
+
   // ─── Integration credentials ──────────────────────────────────────────
   app.get(
     '/admin/guilds/:guildId/integration-credentials',
