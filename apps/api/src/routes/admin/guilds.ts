@@ -8,6 +8,7 @@ import {
   SnowflakeSchema,
   UpdateAutomodConfigSchema,
   UpdateLoggingConfigSchema,
+  UpdateVerificationConfigSchema,
   UpdateWarningPolicySchema,
   UpdateWelcomeConfigSchema,
 } from '@discord-bot/shared';
@@ -358,13 +359,17 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req, reply) => {
       const { guildId } = req.params;
       await ensureGuildAccess(app, req, reply, guildId);
-      const config = await app.prisma.welcomeConfig.findUnique({ where: { guildId } });
+      const cfg = await app.prisma.welcomeConfig.findUnique({ where: { guildId } });
       return {
         guildId,
-        enabled: config?.enabled ?? false,
-        channelId: config?.channelId ?? null,
-        joinTemplate: config?.joinTemplate ?? null,
-        leaveTemplate: config?.leaveTemplate ?? null,
+        enabled: cfg?.enabled ?? false,
+        channelId: cfg?.channelId ?? null,
+        joinTemplate: cfg?.joinTemplate ?? null,
+        leaveTemplate: cfg?.leaveTemplate ?? null,
+        dmTemplate: cfg?.dmTemplate ?? null,
+        autoRoleIds: (cfg?.autoRoleIds as string[]) ?? [],
+        milestoneEvery: cfg?.milestoneEvery ?? null,
+        milestoneTemplate: cfg?.milestoneTemplate ?? null,
       };
     },
   );
@@ -381,8 +386,12 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
       if (patch.channelId !== undefined) update.channelId = patch.channelId;
       if (patch.joinTemplate !== undefined) update.joinTemplate = patch.joinTemplate;
       if (patch.leaveTemplate !== undefined) update.leaveTemplate = patch.leaveTemplate;
+      if (patch.dmTemplate !== undefined) update.dmTemplate = patch.dmTemplate;
+      if (patch.autoRoleIds !== undefined) update.autoRoleIds = patch.autoRoleIds;
+      if (patch.milestoneEvery !== undefined) update.milestoneEvery = patch.milestoneEvery;
+      if (patch.milestoneTemplate !== undefined) update.milestoneTemplate = patch.milestoneTemplate;
 
-      const config = await app.prisma.welcomeConfig.upsert({
+      const cfg = await app.prisma.welcomeConfig.upsert({
         where: { guildId },
         update,
         create: {
@@ -391,14 +400,82 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
           channelId: patch.channelId ?? null,
           joinTemplate: patch.joinTemplate ?? null,
           leaveTemplate: patch.leaveTemplate ?? null,
+          dmTemplate: patch.dmTemplate ?? null,
+          autoRoleIds: patch.autoRoleIds ?? [],
+          milestoneEvery: patch.milestoneEvery ?? null,
+          milestoneTemplate: patch.milestoneTemplate ?? null,
         },
       });
       return {
-        guildId: config.guildId,
-        enabled: config.enabled,
-        channelId: config.channelId,
-        joinTemplate: config.joinTemplate,
-        leaveTemplate: config.leaveTemplate,
+        guildId: cfg.guildId,
+        enabled: cfg.enabled,
+        channelId: cfg.channelId,
+        joinTemplate: cfg.joinTemplate,
+        leaveTemplate: cfg.leaveTemplate,
+        dmTemplate: cfg.dmTemplate,
+        autoRoleIds: (cfg.autoRoleIds as string[]) ?? [],
+        milestoneEvery: cfg.milestoneEvery,
+        milestoneTemplate: cfg.milestoneTemplate,
+      };
+    },
+  );
+
+  // ─── Verification config ──────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/verification',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const cfg = await app.prisma.verificationConfig.findUnique({ where: { guildId } });
+      return {
+        guildId,
+        enabled: cfg?.enabled ?? false,
+        channelId: cfg?.channelId ?? null,
+        messageId: cfg?.messageId ?? null,
+        verifiedRoleId: cfg?.verifiedRoleId ?? null,
+        buttonLabel: cfg?.buttonLabel ?? null,
+        prompt: cfg?.prompt ?? null,
+      };
+    },
+  );
+
+  app.put(
+    '/admin/guilds/:guildId/verification',
+    { schema: { params: Params, body: UpdateVerificationConfigSchema } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const patch = req.body;
+      const update: Record<string, unknown> = {};
+      if (patch.enabled !== undefined) update.enabled = patch.enabled;
+      if (patch.channelId !== undefined) update.channelId = patch.channelId;
+      if (patch.messageId !== undefined) update.messageId = patch.messageId;
+      if (patch.verifiedRoleId !== undefined) update.verifiedRoleId = patch.verifiedRoleId;
+      if (patch.buttonLabel !== undefined) update.buttonLabel = patch.buttonLabel;
+      if (patch.prompt !== undefined) update.prompt = patch.prompt;
+
+      const cfg = await app.prisma.verificationConfig.upsert({
+        where: { guildId },
+        update,
+        create: {
+          guildId,
+          enabled: patch.enabled ?? false,
+          channelId: patch.channelId ?? null,
+          messageId: patch.messageId ?? null,
+          verifiedRoleId: patch.verifiedRoleId ?? null,
+          buttonLabel: patch.buttonLabel ?? null,
+          prompt: patch.prompt ?? null,
+        },
+      });
+      return {
+        guildId: cfg.guildId,
+        enabled: cfg.enabled,
+        channelId: cfg.channelId,
+        messageId: cfg.messageId,
+        verifiedRoleId: cfg.verifiedRoleId,
+        buttonLabel: cfg.buttonLabel,
+        prompt: cfg.prompt,
       };
     },
   );

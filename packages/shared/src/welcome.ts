@@ -14,6 +14,10 @@ export const WelcomeConfigSchema = z.object({
   channelId: SnowflakeSchema.nullable(),
   joinTemplate: z.string().min(1).max(2000).nullable(),
   leaveTemplate: z.string().min(1).max(2000).nullable(),
+  dmTemplate: z.string().min(1).max(2000).nullable(),
+  autoRoleIds: z.array(SnowflakeSchema),
+  milestoneEvery: z.number().int().min(1).max(100_000).nullable(),
+  milestoneTemplate: z.string().min(1).max(2000).nullable(),
 });
 
 export type WelcomeConfig = z.infer<typeof WelcomeConfigSchema>;
