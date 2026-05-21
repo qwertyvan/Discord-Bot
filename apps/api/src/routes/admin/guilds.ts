@@ -990,6 +990,82 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  // ─── Admin action audit log ───────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/admin-actions',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const items = await app.prisma.adminAction.findMany({
+        where: { guildId },
+        orderBy: { createdAt: 'desc' },
+        take: req.query.limit,
+      });
+      return {
+        actions: items.map((a) => ({
+          id: a.id,
+          guildId: a.guildId,
+          userId: a.userId,
+          method: a.method,
+          path: a.path,
+          summary: a.summary as Record<string, unknown>,
+          status: a.status,
+          createdAt: a.createdAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  // ─── Config export ────────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/export',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const [welcome, logging, policy, automod, verification, leveling, economy, tickets, ticketCats] =
+        await Promise.all([
+          app.prisma.welcomeConfig.findUnique({ where: { guildId } }),
+          app.prisma.loggingConfig.findUnique({ where: { guildId } }),
+          app.prisma.warningPolicy.findUnique({ where: { guildId } }),
+          app.prisma.automodConfig.findUnique({ where: { guildId } }),
+          app.prisma.verificationConfig.findUnique({ where: { guildId } }),
+          app.prisma.levelConfig.findUnique({ where: { guildId } }),
+          app.prisma.economyConfig.findUnique({ where: { guildId } }),
+          app.prisma.ticketConfig.findUnique({ where: { guildId } }),
+          app.prisma.ticketCategory.findMany({ where: { guildId } }),
+        ]);
+      const [shop, panels, tags, autoResponses] = await Promise.all([
+        app.prisma.shopItem.findMany({ where: { guildId } }),
+        app.prisma.reactionRolePanel.findMany({ where: { guildId }, include: { options: true } }),
+        app.prisma.tag.findMany({ where: { guildId } }),
+        app.prisma.autoResponse.findMany({ where: { guildId } }),
+      ]);
+      return {
+        guildId,
+        exportedAt: new Date().toISOString(),
+        welcome,
+        logging,
+        warningPolicy: policy,
+        automod,
+        verification,
+        leveling,
+        economy,
+        tickets: { config: tickets, categories: ticketCats },
+        shop,
+        reactionRolePanels: panels,
+        tags,
+        autoResponses,
+      };
+    },
+  );
+
   // ─── Integrations ─────────────────────────────────────────────────────
   app.get(
     '/admin/guilds/:guildId/integrations',

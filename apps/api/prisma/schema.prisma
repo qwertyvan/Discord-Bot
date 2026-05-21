@@ -39,7 +39,33 @@ model Guild {
   messageActivity      MessageActivity[]
   integrations         IntegrationSubscription[]
   pendingPosts         PendingPost[]
+  adminActions         AdminAction[]
   caseCounter          CaseCounter?
+}
+
+// Each session-authed mutation through /admin/* is recorded here so the
+// dashboard can show "X enabled automod" / "Y deleted ticket category Z"
+// and trace config changes over time.
+model AdminAction {
+  id          String   @id @default(uuid())
+  guildId     String?
+  userId      String
+  method      String   @db.VarChar(8)
+  path        String   @db.VarChar(256)
+  summary     Json     @default("{}")
+  status      Int
+  createdAt   DateTime @default(now())
+
+  guild       Guild?   @relation(fields: [guildId], references: [id], onDelete: SetNull)
+
+  @@index([guildId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model UserTimezone {
+  userId    String   @id
+  tz        String   @db.VarChar(64)
+  updatedAt DateTime @updatedAt
 }
 
 model IntegrationSubscription {

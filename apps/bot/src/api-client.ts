@@ -420,4 +420,15 @@ export const api = {
   }) => call<{ id: string }>(`/posts`, { method: 'POST', body }),
   deletePost: (postId: string) =>
     call<void>(`/posts/${postId}`, { method: 'DELETE' }),
+
+  // User timezone
+  getUserTimezone: (userId: string) =>
+    call<{ userId: string; tz: string | null }>(`/users/${userId}/timezone`),
+  setUserTimezone: (userId: string, tz: string) =>
+    call<{ userId: string; tz: string }>(`/users/${userId}/timezone`, {
+      method: 'PUT',
+      body: { tz },
+    }),
+  clearUserTimezone: (userId: string) =>
+    call<void>(`/users/${userId}/timezone`, { method: 'DELETE' }),
 };

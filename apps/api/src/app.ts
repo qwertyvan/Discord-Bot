@@ -14,6 +14,7 @@ import botAuthPlugin from './plugins/bot-auth.js';
 import sessionAuthPlugin from './plugins/session-auth.js';
 import discordOAuthPlugin from './plugins/discord-oauth.js';
 import csrfPlugin from './plugins/csrf.js';
+import adminAuditPlugin from './plugins/admin-audit.js';
 import { healthRoutes } from './routes/health.js';
 import { guildsRoutes } from './routes/guilds.js';
 import { modActionsRoutes } from './routes/mod-actions.js';
@@ -33,6 +34,7 @@ import { economyRoutes } from './routes/economy.js';
 import { ticketsRoutes } from './routes/tickets.js';
 import { statsRoutes } from './routes/stats.js';
 import { integrationsRoutes } from './routes/integrations.js';
+import { userTimezoneRoutes } from './routes/user-timezone.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -66,6 +68,7 @@ export async function buildApp() {
   await app.register(sessionAuthPlugin);
   await app.register(discordOAuthPlugin);
   await app.register(csrfPlugin);
+  await app.register(adminAuditPlugin);
 
   await app.register(healthRoutes);
   await app.register(guildsRoutes);
@@ -86,6 +89,7 @@ export async function buildApp() {
   await app.register(ticketsRoutes);
   await app.register(statsRoutes);
   await app.register(integrationsRoutes);
+  await app.register(userTimezoneRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);
