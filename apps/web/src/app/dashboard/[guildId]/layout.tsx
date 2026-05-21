@@ -35,6 +35,7 @@ export default async function GuildLayout({
     { href: `${base}/leveling`, label: 'Leveling' },
     { href: `${base}/economy`, label: 'Economy' },
     { href: `${base}/tickets`, label: 'Tickets' },
+    { href: `${base}/integrations`, label: 'Integrations' },
     { href: `${base}/logging`, label: 'Logging' },
     { href: `${base}/policy`, label: 'Policy' },
   ];

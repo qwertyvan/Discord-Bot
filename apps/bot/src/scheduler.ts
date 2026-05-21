@@ -1,24 +1,30 @@
-import { ChannelType, type Client, type TextChannel } from 'discord.js';
+import {
+  ChannelType,
+  EmbedBuilder,
+  type APIEmbed,
+  type Client,
+  type TextChannel,
+} from 'discord.js';
 import { api, ApiError } from './api-client.js';
 import { log } from './logger.js';
 import { pollMessagePayload } from './util/poll-render.js';
+import { fetchFeed } from './integrations/rss.js';
 
 const REMINDER_TICK_MS = 10_000;
 const POLL_TICK_MS = 30_000;
+const POSTS_TICK_MS = 15_000;
+const RSS_TICK_MS = 60_000;
 
-/**
- * Lightweight polling-based scheduler. The API exposes /reminders/due and
- * /polls/due so the bot can pull both. A real production deployment would
- * probably move this onto a job queue (BullMQ, Temporal), but for the
- * single-process bot a 10s/30s tick is fine.
- */
 export function startScheduler(client: Client): void {
   setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
   setInterval(() => closeDuePolls(client).catch(noop), POLL_TICK_MS);
-  // Run once shortly after startup so we don't make users wait a full tick.
+  setInterval(() => deliverPendingPosts(client).catch(noop), POSTS_TICK_MS);
+  setInterval(() => pollRssFeeds().catch(noop), RSS_TICK_MS);
   setTimeout(() => {
     fireDueReminders(client).catch(noop);
     closeDuePolls(client).catch(noop);
+    deliverPendingPosts(client).catch(noop);
+    pollRssFeeds().catch(noop);
   }, 5_000);
 }
 
@@ -90,6 +96,104 @@ async function closeDuePolls(client: Client): Promise<void> {
       if (message) await message.edit(pollMessagePayload(closed)).catch(() => {});
     } catch (err) {
       log.warn('Poll close failed', { id: poll.id, err: String(err) });
+    }
+  }
+}
+
+async function deliverPendingPosts(client: Client): Promise<void> {
+  let due;
+  try {
+    due = await api.duePosts();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('duePosts API error', { status: err.status });
+    return;
+  }
+
+  for (const post of due.posts) {
+    try {
+      const guild = client.guilds.cache.get(post.guildId);
+      if (!guild) {
+        await api.deletePost(post.id).catch(() => {});
+        continue;
+      }
+      const channel = guild.channels.cache.get(post.channelId);
+      if (!channel || channel.type !== ChannelType.GuildText) {
+        await api.deletePost(post.id).catch(() => {});
+        continue;
+      }
+      const payload: { content?: string; embeds?: APIEmbed[] } = {};
+      if (post.content) payload.content = post.content;
+      if (post.embedJson) payload.embeds = [post.embedJson as APIEmbed];
+      else if (post.source && !post.content) {
+        payload.content = `*${post.source}*`;
+      }
+      await (channel as TextChannel).send({
+        ...payload,
+        allowedMentions: { parse: [] },
+      });
+      await api.deletePost(post.id).catch(() => {});
+    } catch (err) {
+      log.warn('Pending post delivery failed', { id: post.id, err: String(err) });
+      // Leave it in the queue; next tick will retry.
+    }
+  }
+}
+
+async function pollRssFeeds(): Promise<void> {
+  let due;
+  try {
+    due = await api.dueRssIntegrations();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('dueRssIntegrations API error', { status: err.status });
+    return;
+  }
+
+  for (const sub of due.integrations) {
+    if (!sub.rssUrl) continue;
+    try {
+      const items = await fetchFeed(sub.rssUrl);
+      if (items.length === 0) {
+        await api.updateRssState(sub.id, { lastSeenGuid: sub.lastSeenGuid }).catch(() => {});
+        continue;
+      }
+
+      // First-run: just record the head GUID, don't fire a backlog of posts.
+      if (!sub.lastSeenGuid) {
+        await api.updateRssState(sub.id, { lastSeenGuid: items[0]!.guid }).catch(() => {});
+        continue;
+      }
+
+      const newItems: typeof items = [];
+      for (const item of items) {
+        if (item.guid === sub.lastSeenGuid) break;
+        newItems.push(item);
+      }
+      if (newItems.length === 0) {
+        await api.updateRssState(sub.id, { lastSeenGuid: sub.lastSeenGuid }).catch(() => {});
+        continue;
+      }
+
+      // Post oldest-first so the timeline reads naturally.
+      for (const item of newItems.reverse()) {
+        const embed = new EmbedBuilder()
+          .setTitle(item.title.slice(0, 256) || '(no title)')
+          .setColor(0x5865f2)
+          .setFooter({ text: sub.name });
+        if (item.link) embed.setURL(item.link);
+        if (item.summary) embed.setDescription(item.summary);
+        if (item.pubDate && !isNaN(item.pubDate.getTime())) embed.setTimestamp(item.pubDate);
+        await api
+          .createPendingPost({
+            guildId: sub.guildId,
+            channelId: sub.channelId,
+            embedJson: embed.toJSON(),
+            source: sub.name,
+          })
+          .catch((err) => log.warn('queue RSS post failed', { err: String(err) }));
+      }
+      await api.updateRssState(sub.id, { lastSeenGuid: items[0]!.guid }).catch(() => {});
+    } catch (err) {
+      log.warn('RSS poll failed', { id: sub.id, err: String(err) });
     }
   }
 }
