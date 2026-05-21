@@ -13,15 +13,67 @@ model Guild {
   iconUrl   String?
   addedAt   DateTime @default(now())
 
-  welcome         WelcomeConfig?
-  loggingConfig   LoggingConfig?
-  warningPolicy   WarningPolicy?
-  automodConfig   AutomodConfig?
-  modActions      ModAction[]
-  modNotes        ModNote[]
-  auditEvents     AuditEvent[]
-  automodHits     AutomodHit[]
-  caseCounter     CaseCounter?
+  welcome              WelcomeConfig?
+  loggingConfig        LoggingConfig?
+  warningPolicy        WarningPolicy?
+  automodConfig        AutomodConfig?
+  verificationConfig   VerificationConfig?
+  modActions           ModAction[]
+  modNotes             ModNote[]
+  auditEvents          AuditEvent[]
+  automodHits          AutomodHit[]
+  reactionRolePanels   ReactionRolePanel[]
+  caseCounter          CaseCounter?
+}
+
+model VerificationConfig {
+  guildId         String   @id
+  enabled         Boolean  @default(false)
+  channelId       String?  // where the verify button is posted
+  messageId       String?  // the message that hosts the button
+  verifiedRoleId  String?
+  buttonLabel     String?  // defaults to "Verify"
+  prompt          String?  // header / instruction text
+  updatedAt       DateTime @updatedAt
+
+  guild           Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model ReactionRolePanel {
+  id            String                 @id @default(uuid())
+  guildId       String
+  channelId     String
+  messageId     String?                // null until the panel is posted
+  name          String
+  description   String?
+  // When true, picking one option removes the others' roles.
+  exclusive     Boolean                @default(false)
+  // Render as a dropdown instead of buttons (forced when > 5 options).
+  useDropdown   Boolean                @default(false)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  guild         Guild                  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  options       ReactionRoleOption[]
+
+  @@index([guildId])
+  @@unique([guildId, name])
+}
+
+model ReactionRoleOption {
+  id            String              @id @default(uuid())
+  panelId       String
+  roleId        String
+  label         String
+  description   String?
+  // Unicode emoji or "<a?:name:id>" custom-emoji syntax.
+  emoji         String?
+  // Display order within the panel.
+  position      Int                 @default(0)
+
+  panel         ReactionRolePanel   @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@index([panelId, position])
 }
 
 model AutomodConfig {
@@ -57,14 +109,21 @@ model AutomodHit {
 }
 
 model WelcomeConfig {
-  guildId       String   @id
-  enabled       Boolean  @default(false)
-  channelId     String?
-  joinTemplate  String?
-  leaveTemplate String?
-  updatedAt     DateTime @updatedAt
+  guildId            String   @id
+  enabled            Boolean  @default(false)
+  channelId          String?
+  joinTemplate       String?
+  leaveTemplate      String?
+  // Optional DM sent to the joining member (separate from the channel message).
+  dmTemplate         String?
+  // Roles assigned automatically to every new member.
+  autoRoleIds        Json     @default("[]")
+  // Announce milestones (e.g. every 100 members). null disables.
+  milestoneEvery     Int?
+  milestoneTemplate  String?
+  updatedAt          DateTime @updatedAt
 
-  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild              Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 // Unified moderation action log. Every kick/ban/timeout/warn/etc. produces

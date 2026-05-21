@@ -22,8 +22,11 @@ import { auditEventsRoutes } from './routes/audit-events.js';
 import { automodRoutes } from './routes/automod.js';
 import { warningPolicyRoutes } from './routes/warning-policy.js';
 import { welcomeRoutes } from './routes/welcome.js';
+import { verificationRoutes } from './routes/verification.js';
+import { reactionRolesRoutes } from './routes/reaction-roles.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
+import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
 import { HttpError } from './errors.js';
 
 export async function buildApp() {
@@ -63,8 +66,11 @@ export async function buildApp() {
   await app.register(automodRoutes);
   await app.register(warningPolicyRoutes);
   await app.register(welcomeRoutes);
+  await app.register(verificationRoutes);
+  await app.register(reactionRolesRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
+  await app.register(adminReactionRolesRoutes);
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) {

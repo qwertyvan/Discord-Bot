@@ -36,7 +36,9 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Warning policy** | Optional warning expiry (auto-deactivate after N days) and threshold-based auto-escalation (e.g. 3 warnings → 1h timeout, 5 → ban) |
 | **Case-numbered mod log** | Every moderation action gets a unique per-guild case number for easy reference (`/case 42`) and a unified `/history @user` view |
 | **Auto-moderation** | Per-guild rules for anti-spam, anti-invite, mass-mention, CAPS, emoji-spam, zalgo, link allow/block lists, badwords, phishing domains; per-join rules for new accounts and raid lockdown; configurable action (delete/warn/timeout/kick/ban) and exempt roles/channels |
-| **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome config, logging config, warning policy editor |
+| **Onboarding** | Join/leave + DM templates, auto-role on join, milestone announcements, button-based verification gate |
+| **Reaction roles** | Self-serve role panels rendered as buttons (≤ 5 options) or a dropdown, with optional exclusive groups |
+| **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome / verification / reaction-roles / logging / policy config screens |
 
 ## Project layout
 

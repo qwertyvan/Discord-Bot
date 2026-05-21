@@ -1,6 +1,7 @@
 import type { SlashCommand } from '../command.js';
 import { generalCommands } from './general/index.js';
 import { moderationCommands } from './moderation/index.js';
+import { onboardingCommands } from './onboarding/index.js';
 import { utilityCommands } from './utility/index.js';
 import { funCommands } from './fun/index.js';
 
@@ -22,6 +23,7 @@ export function getCommandRegistry(): CommandRegistry {
   const groups: Record<string, SlashCommand[]> = {
     general: generalCommands,
     moderation: moderationCommands,
+    onboarding: onboardingCommands,
     utility: utilityCommands,
     fun: funCommands,
   };

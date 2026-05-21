@@ -17,12 +17,28 @@ export default async function WelcomePage({
     const channelId = String(formData.get('channelId') ?? '').trim() || null;
     const joinTemplate = String(formData.get('joinTemplate') ?? '').trim() || null;
     const leaveTemplate = String(formData.get('leaveTemplate') ?? '').trim() || null;
+    const dmTemplate = String(formData.get('dmTemplate') ?? '').trim() || null;
+    const milestoneTemplate = String(formData.get('milestoneTemplate') ?? '').trim() || null;
+    const milestoneRaw = String(formData.get('milestoneEvery') ?? '').trim();
+    const milestoneEvery = milestoneRaw ? Number(milestoneRaw) : null;
+    const autoRoleIds = String(formData.get('autoRoleIds') ?? '')
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
     await serverFetch(`/admin/guilds/${gid}/welcome`, {
       method: 'PUT',
-      body: { enabled, channelId, joinTemplate, leaveTemplate },
+      body: {
+        enabled,
+        channelId,
+        joinTemplate,
+        leaveTemplate,
+        dmTemplate,
+        autoRoleIds,
+        milestoneEvery,
+        milestoneTemplate,
+      },
     });
-    // Revalidate the whole guild section so the overview tab's "Welcome: On/Off" refreshes too.
     revalidatePath(`/dashboard/${gid}`, 'layout');
   }
 
@@ -36,11 +52,9 @@ export default async function WelcomePage({
             type="checkbox"
             name="enabled"
             defaultChecked={config.enabled}
-            className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-discord focus:ring-discord"
+            className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-discord"
           />
-          <span className="text-sm font-medium text-slate-100">
-            Send welcome and leave messages
-          </span>
+          <span className="text-sm font-medium">Send welcome / leave / milestone messages</span>
         </label>
       </div>
 
@@ -49,8 +63,8 @@ export default async function WelcomePage({
         name="channelId"
         defaultValue={config.channelId ?? ''}
         placeholder="123456789012345678"
-        help="Right-click the channel in Discord (with developer mode on) → Copy Channel ID."
         mono
+        help="Where channel-side join/leave/milestone messages are posted."
       />
 
       <Field
@@ -67,9 +81,43 @@ export default async function WelcomePage({
         name="leaveTemplate"
         defaultValue={config.leaveTemplate ?? ''}
         placeholder="{username} just left {server}."
-        help="Placeholders: {user} {username} {server} {memberCount}"
         textarea
       />
+
+      <Field
+        label="Join DM"
+        name="dmTemplate"
+        defaultValue={config.dmTemplate ?? ''}
+        placeholder="Hey {username}, welcome to {server}! Check #rules to get started."
+        help="Sent privately to the joining member. Users with DMs closed simply miss it."
+        textarea
+      />
+
+      <Field
+        label="Auto-role IDs"
+        name="autoRoleIds"
+        defaultValue={config.autoRoleIds.join(', ')}
+        placeholder="role IDs (comma- or space-separated)"
+        help="Assigned to every new member as soon as they join."
+        mono
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Milestone every"
+          name="milestoneEvery"
+          defaultValue={config.milestoneEvery ?? ''}
+          placeholder="100"
+          help="Announce when memberCount crosses a multiple of this number."
+        />
+        <Field
+          label="Milestone template"
+          name="milestoneTemplate"
+          defaultValue={config.milestoneTemplate ?? ''}
+          placeholder="🎉 {server} just hit {memberCount} members!"
+          textarea
+        />
+      </div>
 
       <button
         type="submit"
@@ -92,7 +140,7 @@ function Field({
 }: {
   label: string;
   name: string;
-  defaultValue: string;
+  defaultValue: string | number;
   placeholder?: string;
   help?: string;
   mono?: boolean;

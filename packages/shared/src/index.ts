@@ -5,6 +5,8 @@ export * from './mod-note.js';
 export * from './audit-event.js';
 export * from './automod.js';
 export * from './welcome.js';
+export * from './verification.js';
+export * from './reaction-roles.js';
 export * from './user.js';
 export * from './errors.js';
 export * from './permissions.js';

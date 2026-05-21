@@ -12,6 +12,9 @@ import type {
   ModAction,
   ModActionType,
   ModNote,
+  ReactionRolePanel,
+  VerificationConfig,
+  UpdateVerificationConfigInput,
   WarningPolicy,
   WelcomeConfig,
   UpdateWelcomeConfigInput,
@@ -155,4 +158,25 @@ export const api = {
     call<AutomodConfig>(`/guilds/${guildId}/automod-config`),
   createAutomodHit: (guildId: string, body: CreateAutomodHitInput) =>
     call<AutomodHit>(`/guilds/${guildId}/automod-hits`, { method: 'POST', body }),
+
+  // Verification
+  getVerificationConfig: (guildId: string) =>
+    call<VerificationConfig>(`/guilds/${guildId}/verification`),
+  updateVerificationConfig: (guildId: string, body: UpdateVerificationConfigInput) =>
+    call<VerificationConfig>(`/guilds/${guildId}/verification`, { method: 'PUT', body }),
+
+  // Reaction-role panels
+  listReactionRolePanels: (guildId: string) =>
+    call<{ panels: ReactionRolePanel[] }>(`/guilds/${guildId}/reaction-role-panels`),
+  getReactionRolePanel: (guildId: string, panelId: string) =>
+    call<ReactionRolePanel>(`/guilds/${guildId}/reaction-role-panels/${panelId}`),
+  updateReactionRolePanel: (
+    guildId: string,
+    panelId: string,
+    body: { messageId?: string | null },
+  ) =>
+    call<ReactionRolePanel>(`/guilds/${guildId}/reaction-role-panels/${panelId}`, {
+      method: 'PATCH',
+      body,
+    }),
 };
