@@ -63,7 +63,14 @@ export const tag: SlashCommand = {
         const name = interaction.options.getString('name', true);
         const t = await api.getTag(interaction.guildId, name);
         await api.touchTag(interaction.guildId, name).catch(() => {});
-        await interaction.reply({ content: t.content, allowedMentions: { parse: [] } });
+        const { renderTemplate } = await import('../../util/template-vars.js');
+        const content = interaction.guild
+          ? renderTemplate(t.content, { user: interaction.user, guild: interaction.guild })
+          : t.content;
+        await interaction.reply({
+          content,
+          allowedMentions: { users: [interaction.user.id] },
+        });
       } else if (sub === 'list') {
         const { tags } = await api.listTags(interaction.guildId);
         if (tags.length === 0) {

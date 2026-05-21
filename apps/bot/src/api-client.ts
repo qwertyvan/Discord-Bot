@@ -50,6 +50,9 @@ import type {
   SetUserBirthdayInput,
   Event as GuildEvent,
   CreateEventInput,
+  CustomCommand,
+  CreateCustomCommandInput,
+  UpdateCustomCommandInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -471,6 +474,27 @@ export const api = {
     call<{ provider: string; key: string; value: string }>(
       `/guilds/${guildId}/integration-credentials/${provider}/${key}/value`,
     ),
+
+  // Custom commands
+  listCustomCommands: (guildId: string) =>
+    call<{ commands: CustomCommand[] }>(`/guilds/${guildId}/custom-commands`),
+  getCustomCommand: (guildId: string, name: string) =>
+    call<CustomCommand>(`/guilds/${guildId}/custom-commands/${encodeURIComponent(name)}`),
+  createCustomCommand: (guildId: string, body: CreateCustomCommandInput) =>
+    call<CustomCommand>(`/guilds/${guildId}/custom-commands`, { method: 'POST', body }),
+  updateCustomCommand: (guildId: string, name: string, body: UpdateCustomCommandInput) =>
+    call<CustomCommand>(`/guilds/${guildId}/custom-commands/${encodeURIComponent(name)}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteCustomCommand: (guildId: string, name: string) =>
+    call<void>(`/guilds/${guildId}/custom-commands/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }),
+  touchCustomCommand: (guildId: string, name: string) =>
+    call<CustomCommand>(`/guilds/${guildId}/custom-commands/${encodeURIComponent(name)}/touch`, {
+      method: 'POST',
+    }),
 
   // User timezone
   getUserTimezone: (userId: string) =>

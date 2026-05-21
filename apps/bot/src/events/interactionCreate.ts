@@ -20,11 +20,34 @@ export function registerInteractionCreate(client: Client): void {
     try {
       if (interaction.isChatInputCommand()) {
         const command = getCommandRegistry().byName.get(interaction.commandName);
-        if (!command) {
-          log.warn('Unknown command', { name: interaction.commandName });
+        if (command) {
+          await command.execute(interaction);
           return;
         }
-        await command.execute(interaction);
+        // Fall back to per-guild custom commands.
+        if (interaction.inGuild() && interaction.guildId && interaction.guild) {
+          try {
+            const cc = await api.getCustomCommand(interaction.guildId, interaction.commandName);
+            const { renderTemplate } = await import('../util/template-vars.js');
+            const content = renderTemplate(cc.response, {
+              user: interaction.user,
+              guild: interaction.guild,
+            });
+            await interaction.reply({
+              content,
+              allowedMentions: { users: [interaction.user.id] },
+            });
+            api.touchCustomCommand(interaction.guildId, interaction.commandName).catch(() => {});
+            return;
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 404) {
+              log.warn('Unknown command', { name: interaction.commandName });
+              return;
+            }
+            throw err;
+          }
+        }
+        log.warn('Unknown command', { name: interaction.commandName });
         return;
       }
 

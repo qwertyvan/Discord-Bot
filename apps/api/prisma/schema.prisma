@@ -45,6 +45,7 @@ model Guild {
   birthdayConfig       BirthdayConfig?
   userBirthdays        UserBirthday[]
   events               Event[]
+  customCommands       CustomCommand[]
   caseCounter          CaseCounter?
 }
 
@@ -148,6 +149,26 @@ model UserTimezone {
   userId    String   @id
   tz        String   @db.VarChar(64)
   updatedAt DateTime @updatedAt
+}
+
+// Per-guild custom slash commands. The bot syncs Discord's guild command
+// registration when these change. The response supports the same template
+// variables as tags: {user}, {server}, {memberCount}, {random:a,b,c}.
+model CustomCommand {
+  id          String   @id @default(uuid())
+  guildId     String
+  name        String   @db.VarChar(32)
+  description String   @db.VarChar(100)
+  response    String   @db.VarChar(2000)
+  createdBy   String
+  uses        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, name])
+  @@index([guildId])
 }
 
 // Self-hosted URL shortener entries. `slug` is the path served by
