@@ -5,6 +5,8 @@ import { registerGuildLifecycle } from './events/guildLifecycle.js';
 import { registerWelcomeEvents } from './events/welcome.js';
 import { registerAuditEvents } from './events/audit.js';
 import { registerAutomodEvents } from './events/automod.js';
+import { registerAutoResponseEvents } from './events/auto-response.js';
+import { startScheduler } from './scheduler.js';
 
 export function createClient(): Client {
   const client = new Client({
@@ -25,6 +27,8 @@ export function createClient(): Client {
   registerWelcomeEvents(client);
   registerAuditEvents(client);
   registerAutomodEvents(client);
+  registerAutoResponseEvents(client);
+  startScheduler(client);
 
   return client;
 }
