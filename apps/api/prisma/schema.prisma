@@ -37,7 +37,51 @@ model Guild {
   ticketCategories     TicketCategory[]
   tickets              Ticket[]
   messageActivity      MessageActivity[]
+  integrations         IntegrationSubscription[]
+  pendingPosts         PendingPost[]
   caseCounter          CaseCounter?
+}
+
+model IntegrationSubscription {
+  id            String    @id @default(uuid())
+  guildId       String
+  channelId     String
+  name          String    @db.VarChar(80)
+  // 'rss' or 'webhook'.
+  kind          String    @db.VarChar(16)
+  // RSS-only:
+  rssUrl        String?
+  lastSeenGuid  String?
+  lastPolledAt  DateTime?
+  pollInterval  Int       @default(600) // seconds between polls
+  // Webhook-only:
+  token         String?   @unique
+  secret        String?
+  // Both:
+  enabled       Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  guild         Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+  @@index([kind, enabled, lastPolledAt])
+}
+
+// Queue of messages to be posted by the bot. Populated by webhook ingress
+// and RSS polling; the bot drains the queue on its scheduler tick.
+model PendingPost {
+  id          String   @id @default(uuid())
+  guildId     String
+  channelId   String
+  content     String?  @db.VarChar(2000)
+  embedJson   Json?
+  // Source label for attribution.
+  source      String?  @db.VarChar(80)
+  createdAt   DateTime @default(now())
+
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
 }
 
 // Per-(channel, day, hour) message counters. The bot keeps an in-memory tally

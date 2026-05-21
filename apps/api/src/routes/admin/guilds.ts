@@ -990,6 +990,109 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  // ─── Integrations ─────────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/integrations',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const subs = await app.prisma.integrationSubscription.findMany({
+        where: { guildId },
+        orderBy: { createdAt: 'desc' },
+      });
+      return {
+        integrations: subs.map((s) => ({
+          id: s.id,
+          guildId: s.guildId,
+          channelId: s.channelId,
+          name: s.name,
+          kind: s.kind as 'rss' | 'webhook',
+          rssUrl: s.rssUrl,
+          lastSeenGuid: s.lastSeenGuid,
+          lastPolledAt: s.lastPolledAt?.toISOString() ?? null,
+          pollInterval: s.pollInterval,
+          token: s.token,
+          secret: s.secret,
+          enabled: s.enabled,
+          createdAt: s.createdAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  app.post(
+    '/admin/guilds/:guildId/integrations',
+    {
+      schema: {
+        params: Params,
+        body: z.discriminatedUnion('kind', [
+          z.object({
+            kind: z.literal('rss'),
+            name: z.string().min(1).max(80),
+            channelId: SnowflakeSchema,
+            rssUrl: z.string().url(),
+            pollInterval: z.number().int().min(60).max(86_400).optional(),
+          }),
+          z.object({
+            kind: z.literal('webhook'),
+            name: z.string().min(1).max(80),
+            channelId: SnowflakeSchema,
+            secret: z.string().min(8).max(128).optional(),
+          }),
+        ]),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const { randomBytes } = await import('node:crypto');
+      const body = req.body;
+      if (body.kind === 'rss') {
+        const created = await app.prisma.integrationSubscription.create({
+          data: {
+            guildId,
+            channelId: body.channelId,
+            name: body.name,
+            kind: 'rss',
+            rssUrl: body.rssUrl,
+            pollInterval: body.pollInterval ?? 600,
+          },
+        });
+        return { id: created.id };
+      }
+      const created = await app.prisma.integrationSubscription.create({
+        data: {
+          guildId,
+          channelId: body.channelId,
+          name: body.name,
+          kind: 'webhook',
+          token: randomBytes(24).toString('base64url'),
+          secret: body.secret ?? null,
+        },
+      });
+      return { id: created.id, token: created.token };
+    },
+  );
+
+  app.delete(
+    '/admin/guilds/:guildId/integrations/:integrationId',
+    {
+      schema: {
+        params: z.object({ guildId: SnowflakeSchema, integrationId: z.string().uuid() }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId, integrationId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const result = await app.prisma.integrationSubscription.deleteMany({
+        where: { id: integrationId, guildId },
+      });
+      if (result.count === 0) throw HttpError.notFound('Integration not found.');
+      return reply.code(204).send();
+    },
+  );
+
   // Note: re-exported schemas keep the type union compile-coupled to the
   // dashboard even though no route uses them directly.
   void ModActionTypeSchema;

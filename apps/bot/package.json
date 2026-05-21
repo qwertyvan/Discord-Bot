@@ -13,6 +13,7 @@
   "dependencies": {
     "@discord-bot/shared": "*",
     "discord.js": "^14.16.3",
+    "fast-xml-parser": "^5.8.0",
     "undici": "^7.2.0",
     "zod": "^3.24.1"
   },

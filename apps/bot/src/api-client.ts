@@ -383,4 +383,41 @@ export const api = {
       method: 'POST',
       body: { entries },
     }),
+
+  // Integrations
+  dueRssIntegrations: (limit = 20) =>
+    call<{
+      integrations: Array<{
+        id: string;
+        guildId: string;
+        channelId: string;
+        name: string;
+        rssUrl: string | null;
+        lastSeenGuid: string | null;
+        pollInterval: number;
+      }>;
+    }>(`/rss/due`, { query: { limit } }),
+  updateRssState: (integrationId: string, body: { lastSeenGuid?: string | null }) =>
+    call<unknown>(`/integrations/${integrationId}/rss-state`, { method: 'POST', body }),
+  duePosts: (limit = 50) =>
+    call<{
+      posts: Array<{
+        id: string;
+        guildId: string;
+        channelId: string;
+        content: string | null;
+        embedJson: Record<string, unknown> | null;
+        source: string | null;
+        createdAt: string;
+      }>;
+    }>(`/posts/due`, { query: { limit } }),
+  createPendingPost: (body: {
+    guildId: string;
+    channelId: string;
+    content?: string;
+    embedJson?: unknown;
+    source?: string;
+  }) => call<{ id: string }>(`/posts`, { method: 'POST', body }),
+  deletePost: (postId: string) =>
+    call<void>(`/posts/${postId}`, { method: 'DELETE' }),
 };
