@@ -16,10 +16,44 @@ model Guild {
   welcome         WelcomeConfig?
   loggingConfig   LoggingConfig?
   warningPolicy   WarningPolicy?
+  automodConfig   AutomodConfig?
   modActions      ModAction[]
   modNotes        ModNote[]
   auditEvents     AuditEvent[]
+  automodHits     AutomodHit[]
   caseCounter     CaseCounter?
+}
+
+model AutomodConfig {
+  guildId        String   @id
+  enabled        Boolean  @default(false)
+  // Roles whose members bypass all automod rules.
+  exemptRoleIds  Json     @default("[]")
+  // Channels whose messages skip automod entirely.
+  exemptChannelIds Json   @default("[]")
+  // Per-rule configuration. See packages/shared/src/automod.ts for the schema.
+  rules          Json     @default("{}")
+  updatedAt      DateTime @updatedAt
+
+  guild          Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model AutomodHit {
+  id         String   @id @default(uuid())
+  guildId    String
+  userId     String
+  channelId  String?
+  rule       String   // rule key (e.g. "antispam", "antiinvite")
+  action     String   // action taken (DELETE, WARN, TIMEOUT, KICK, BAN, NONE)
+  reason     String
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, createdAt])
+  @@index([guildId, userId, createdAt])
+  @@index([guildId, rule, createdAt])
 }
 
 model WelcomeConfig {

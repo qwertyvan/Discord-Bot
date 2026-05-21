@@ -35,7 +35,8 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Audit logging** | Configurable per-event logging of message edits/deletes, member joins/leaves, role changes, channel CRUD, and voice activity to a chosen channel and to a searchable database |
 | **Warning policy** | Optional warning expiry (auto-deactivate after N days) and threshold-based auto-escalation (e.g. 3 warnings → 1h timeout, 5 → ban) |
 | **Case-numbered mod log** | Every moderation action gets a unique per-guild case number for easy reference (`/case 42`) and a unified `/history @user` view |
-| **Admin dashboard** | Per-guild stats, filterable mod log, audit log, welcome config, logging config, warning policy editor |
+| **Auto-moderation** | Per-guild rules for anti-spam, anti-invite, mass-mention, CAPS, emoji-spam, zalgo, link allow/block lists, badwords, phishing domains; per-join rules for new accounts and raid lockdown; configurable action (delete/warn/timeout/kick/ban) and exempt roles/channels |
+| **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome config, logging config, warning policy editor |
 
 ## Project layout
 

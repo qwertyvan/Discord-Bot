@@ -2,7 +2,10 @@ import { request } from 'undici';
 import { env } from './env.js';
 import type {
   AuditEventType,
+  AutomodConfig,
+  AutomodHit,
   CreateAuditEventInput,
+  CreateAutomodHitInput,
   CreateModActionInput,
   CreateModNoteInput,
   LoggingConfig,
@@ -146,4 +149,10 @@ export const api = {
     call<WelcomeConfig>(`/guilds/${guildId}/welcome`),
   updateWelcomeConfig: (guildId: string, body: UpdateWelcomeConfigInput) =>
     call<WelcomeConfig>(`/guilds/${guildId}/welcome`, { method: 'PUT', body }),
+
+  // Automod
+  getAutomodConfig: (guildId: string) =>
+    call<AutomodConfig>(`/guilds/${guildId}/automod-config`),
+  createAutomodHit: (guildId: string, body: CreateAutomodHitInput) =>
+    call<AutomodHit>(`/guilds/${guildId}/automod-hits`, { method: 'POST', body }),
 };

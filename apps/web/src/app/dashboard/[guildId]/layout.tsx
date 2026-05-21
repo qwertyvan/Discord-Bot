@@ -27,6 +27,7 @@ export default async function GuildLayout({
     { href: base, label: 'Overview' },
     { href: `${base}/mod-log`, label: 'Mod log' },
     { href: `${base}/audit-log`, label: 'Audit log' },
+    { href: `${base}/automod`, label: 'Automod' },
     { href: `${base}/welcome`, label: 'Welcome' },
     { href: `${base}/logging`, label: 'Logging' },
     { href: `${base}/policy`, label: 'Policy' },

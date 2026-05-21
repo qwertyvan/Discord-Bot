@@ -4,6 +4,7 @@ import { registerInteractionCreate } from './events/interactionCreate.js';
 import { registerGuildLifecycle } from './events/guildLifecycle.js';
 import { registerWelcomeEvents } from './events/welcome.js';
 import { registerAuditEvents } from './events/audit.js';
+import { registerAutomodEvents } from './events/automod.js';
 
 export function createClient(): Client {
   const client = new Client({
@@ -23,6 +24,7 @@ export function createClient(): Client {
   registerGuildLifecycle(client);
   registerWelcomeEvents(client);
   registerAuditEvents(client);
+  registerAutomodEvents(client);
 
   return client;
 }

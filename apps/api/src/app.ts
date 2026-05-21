@@ -19,6 +19,7 @@ import { guildsRoutes } from './routes/guilds.js';
 import { modActionsRoutes } from './routes/mod-actions.js';
 import { modNotesRoutes } from './routes/mod-notes.js';
 import { auditEventsRoutes } from './routes/audit-events.js';
+import { automodRoutes } from './routes/automod.js';
 import { warningPolicyRoutes } from './routes/warning-policy.js';
 import { welcomeRoutes } from './routes/welcome.js';
 import { authRoutes } from './routes/auth.js';
@@ -59,6 +60,7 @@ export async function buildApp() {
   await app.register(modActionsRoutes);
   await app.register(modNotesRoutes);
   await app.register(auditEventsRoutes);
+  await app.register(automodRoutes);
   await app.register(warningPolicyRoutes);
   await app.register(welcomeRoutes);
   await app.register(authRoutes);
