@@ -28,6 +28,8 @@ import type {
   WarningPolicy,
   WelcomeConfig,
   UpdateWelcomeConfigInput,
+  LevelConfig,
+  UpdateLevelConfigInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -238,4 +240,55 @@ export const api = {
     call<AutoResponse>(`/guilds/${guildId}/auto-responses/${id}`, { method: 'PATCH', body }),
   deleteAutoResponse: (guildId: string, id: string) =>
     call<void>(`/guilds/${guildId}/auto-responses/${id}`, { method: 'DELETE' }),
+
+  // Leveling
+  getLevelConfig: (guildId: string) =>
+    call<LevelConfig>(`/guilds/${guildId}/level-config`),
+  updateLevelConfig: (guildId: string, body: UpdateLevelConfigInput) =>
+    call<LevelConfig>(`/guilds/${guildId}/level-config`, { method: 'PUT', body }),
+  awardTextXp: (guildId: string, body: { userId: string; channelId: string }) =>
+    call<{
+      applied: boolean;
+      xp: number;
+      level: number;
+      previousLevel: number;
+      leveledUp: boolean;
+    }>(`/guilds/${guildId}/level/award`, { method: 'POST', body }),
+  awardVoiceXp: (guildId: string, body: { userId: string; minutes: number }) =>
+    call<{
+      applied: boolean;
+      xp: number;
+      level: number;
+      previousLevel: number;
+      leveledUp: boolean;
+    }>(`/guilds/${guildId}/level/voice`, { method: 'POST', body }),
+  getMemberLevel: (guildId: string, userId: string) =>
+    call<{
+      guildId: string;
+      userId: string;
+      xp: number;
+      voiceMinutes: number;
+      level: number;
+      rank: number | null;
+      currentLevelXp: number;
+      nextLevelXp: number;
+    }>(`/guilds/${guildId}/level/${userId}`),
+  getLeaderboard: (guildId: string, limit = 25) =>
+    call<{
+      entries: Array<{
+        rank: number;
+        guildId: string;
+        userId: string;
+        xp: number;
+        voiceMinutes: number;
+        level: number;
+      }>;
+    }>(`/guilds/${guildId}/leaderboard`, { query: { limit } }),
+  giveXp: (guildId: string, userId: string, amount: number) =>
+    call<{ guildId: string; userId: string; xp: number; level: number }>(
+      `/guilds/${guildId}/level/${userId}/give`,
+      { method: 'POST', body: { amount } },
+    ),
+  resetXp: (guildId: string, userId: string) =>
+    call<void>(`/guilds/${guildId}/level/${userId}`, { method: 'DELETE' }),
 };
