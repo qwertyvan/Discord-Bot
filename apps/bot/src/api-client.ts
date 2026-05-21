@@ -429,6 +429,28 @@ export const api = {
   deletePost: (postId: string) =>
     call<void>(`/posts/${postId}`, { method: 'DELETE' }),
 
+  // Twitch
+  dueTwitchIntegrations: (limit = 20) =>
+    call<{
+      integrations: Array<{
+        id: string;
+        guildId: string;
+        channelId: string;
+        name: string;
+        twitchUsername: string | null;
+        lastSeenGuid: string | null;
+        pollInterval: number;
+      }>;
+    }>(`/twitch/due`, { query: { limit } }),
+  updateTwitchState: (integrationId: string, body: { streamId?: string | null }) =>
+    call<unknown>(`/integrations/${integrationId}/twitch-state`, { method: 'POST', body }),
+
+  // Integration credentials (bot-side read; admin manages writes via session)
+  getIntegrationCredential: (guildId: string, provider: string, key: string) =>
+    call<{ provider: string; key: string; value: string }>(
+      `/guilds/${guildId}/integration-credentials/${provider}/${key}/value`,
+    ),
+
   // User timezone
   getUserTimezone: (userId: string) =>
     call<{ userId: string; tz: string | null }>(`/users/${userId}/timezone`),

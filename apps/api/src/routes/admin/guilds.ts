@@ -1085,6 +1085,87 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  // ─── Integration credentials ──────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/integration-credentials',
+    { schema: { params: Params } },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const rows = await app.prisma.integrationCredential.findMany({
+        where: { guildId },
+        orderBy: [{ provider: 'asc' }, { key: 'asc' }],
+      });
+      return {
+        credentials: rows.map((r) => ({
+          guildId: r.guildId,
+          provider: r.provider,
+          key: r.key,
+          hasValue: r.value.length > 0,
+          updatedAt: r.updatedAt.toISOString(),
+        })),
+      };
+    },
+  );
+
+  app.put(
+    '/admin/guilds/:guildId/integration-credentials',
+    {
+      schema: {
+        params: Params,
+        body: z.object({
+          provider: z.string().min(1).max(32),
+          key: z.string().min(1).max(32),
+          value: z.string().min(1).max(2048),
+        }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      const { encryptToken } = await import('../../crypto.js');
+      const encrypted = encryptToken(req.body.value, app.config.TOKEN_ENCRYPTION_KEY);
+      await app.prisma.integrationCredential.upsert({
+        where: {
+          guildId_provider_key: {
+            guildId,
+            provider: req.body.provider,
+            key: req.body.key,
+          },
+        },
+        update: { value: encrypted },
+        create: {
+          guildId,
+          provider: req.body.provider,
+          key: req.body.key,
+          value: encrypted,
+        },
+      });
+      return { ok: true };
+    },
+  );
+
+  app.delete(
+    '/admin/guilds/:guildId/integration-credentials/:provider/:key',
+    {
+      schema: {
+        params: z.object({
+          guildId: SnowflakeSchema,
+          provider: z.string().min(1).max(32),
+          key: z.string().min(1).max(32),
+        }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId, provider, key } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      await app.prisma.integrationCredential.deleteMany({
+        where: { guildId, provider, key },
+      });
+      return reply.code(204).send();
+    },
+  );
+
   // ─── Integrations ─────────────────────────────────────────────────────
   app.get(
     '/admin/guilds/:guildId/integrations',
@@ -1135,6 +1216,17 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
             channelId: SnowflakeSchema,
             secret: z.string().min(8).max(128).optional(),
           }),
+          z.object({
+            kind: z.literal('twitch'),
+            name: z.string().min(1).max(80),
+            channelId: SnowflakeSchema,
+            twitchUsername: z
+              .string()
+              .min(1)
+              .max(32)
+              .regex(/^[a-z0-9_]+$/i, 'Twitch usernames are alphanumeric/underscore.'),
+            pollInterval: z.number().int().min(60).max(86_400).optional(),
+          }),
         ]),
       },
     },
@@ -1152,6 +1244,19 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
             kind: 'rss',
             rssUrl: body.rssUrl,
             pollInterval: body.pollInterval ?? 600,
+          },
+        });
+        return { id: created.id };
+      }
+      if (body.kind === 'twitch') {
+        const created = await app.prisma.integrationSubscription.create({
+          data: {
+            guildId,
+            channelId: body.channelId,
+            name: body.name,
+            kind: 'twitch',
+            twitchUsername: body.twitchUsername.toLowerCase(),
+            pollInterval: body.pollInterval ?? 120,
           },
         });
         return { id: created.id };

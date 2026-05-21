@@ -46,6 +46,21 @@ export default async function IntegrationsPage({
     revalidatePath(`/dashboard/${gid}/integrations`);
   }
 
+  async function createTwitch(formData: FormData): Promise<void> {
+    'use server';
+    const gid = String(formData.get('guildId'));
+    await serverFetch(`/admin/guilds/${gid}/integrations`, {
+      method: 'POST',
+      body: {
+        kind: 'twitch',
+        name: String(formData.get('name') ?? '').trim(),
+        channelId: String(formData.get('channelId') ?? '').trim(),
+        twitchUsername: String(formData.get('twitchUsername') ?? '').trim(),
+      },
+    });
+    revalidatePath(`/dashboard/${gid}/integrations`);
+  }
+
   async function deleteIntegration(formData: FormData): Promise<void> {
     'use server';
     const gid = String(formData.get('guildId'));
@@ -168,8 +183,47 @@ export default async function IntegrationsPage({
             <p className="mt-2 text-xs text-slate-500">
               The URL is shown once after creation. Accepts JSON with any of{' '}
               <code>content</code>, <code>message</code>, <code>text</code>, <code>title</code>, or{' '}
-              <code>embed</code>.
+              <code>embed</code>. Sending GitHub webhook events to this URL renders rich
+              push/PR/issue/release embeds automatically.
             </p>
+          </div>
+        </form>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-300">
+          Add a Twitch live notification
+        </h2>
+        <p className="mb-3 text-xs text-slate-500">
+          First set <code>twitch.client_id</code> and <code>twitch.client_secret</code> on the{' '}
+          <a className="underline" href={`/dashboard/${guildId}/credentials`}>
+            Credentials
+          </a>{' '}
+          tab. Get them from{' '}
+          <a className="underline" href="https://dev.twitch.tv/console/apps" target="_blank" rel="noreferrer">
+            dev.twitch.tv
+          </a>{' '}
+          (any redirect URI is fine).
+        </p>
+        <form action={createTwitch} className="grid gap-3 sm:grid-cols-2">
+          <input type="hidden" name="guildId" value={guildId} />
+          <Field label="Name" name="name" placeholder="shroud live" required />
+          <Field label="Channel ID (where to post)" name="channelId" placeholder="123…" mono required />
+          <Field
+            label="Twitch username"
+            name="twitchUsername"
+            placeholder="shroud"
+            mono
+            required
+            full
+          />
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              className="rounded-lg bg-discord px-4 py-2 text-sm font-medium text-white hover:bg-discord-dark"
+            >
+              Add Twitch
+            </button>
           </div>
         </form>
       </section>

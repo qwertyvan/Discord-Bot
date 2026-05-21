@@ -9,11 +9,13 @@ import { api, ApiError } from './api-client.js';
 import { log } from './logger.js';
 import { pollMessagePayload } from './util/poll-render.js';
 import { fetchFeed } from './integrations/rss.js';
+import { fetchStream } from './integrations/twitch.js';
 
 const REMINDER_TICK_MS = 10_000;
 const POLL_TICK_MS = 30_000;
 const POSTS_TICK_MS = 15_000;
 const RSS_TICK_MS = 60_000;
+const TWITCH_TICK_MS = 60_000;
 const ANNOUNCE_TICK_MS = 30_000;
 const BIRTHDAY_TICK_MS = 5 * 60_000;
 
@@ -22,6 +24,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => closeDuePolls(client).catch(noop), POLL_TICK_MS);
   setInterval(() => deliverPendingPosts(client).catch(noop), POSTS_TICK_MS);
   setInterval(() => pollRssFeeds().catch(noop), RSS_TICK_MS);
+  setInterval(() => pollTwitchStreams().catch(noop), TWITCH_TICK_MS);
   setInterval(() => fireDueAnnouncements().catch(noop), ANNOUNCE_TICK_MS);
   setInterval(() => fireBirthdays(client).catch(noop), BIRTHDAY_TICK_MS);
   setTimeout(() => {
@@ -29,6 +32,7 @@ export function startScheduler(client: Client): void {
     closeDuePolls(client).catch(noop);
     deliverPendingPosts(client).catch(noop);
     pollRssFeeds().catch(noop);
+    pollTwitchStreams().catch(noop);
     fireDueAnnouncements().catch(noop);
     fireBirthdays(client).catch(noop);
   }, 5_000);
@@ -247,6 +251,55 @@ async function pollRssFeeds(): Promise<void> {
       await api.updateRssState(sub.id, { lastSeenGuid: items[0]!.guid }).catch(() => {});
     } catch (err) {
       log.warn('RSS poll failed', { id: sub.id, err: String(err) });
+    }
+  }
+}
+
+async function pollTwitchStreams(): Promise<void> {
+  let due;
+  try {
+    due = await api.dueTwitchIntegrations();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('dueTwitchIntegrations API error', { status: err.status });
+    return;
+  }
+  for (const sub of due.integrations) {
+    if (!sub.twitchUsername) continue;
+    try {
+      const stream = await fetchStream(sub.guildId, sub.twitchUsername);
+      const seenStreamId = sub.lastSeenGuid;
+      if (stream && stream.id !== seenStreamId) {
+        const embed = {
+          title: `🔴 ${stream.user_name} is live`,
+          url: `https://twitch.tv/${sub.twitchUsername}`,
+          description: stream.title,
+          color: 0x9146ff,
+          fields: [
+            { name: 'Game', value: stream.game_name || 'Unknown', inline: true },
+            { name: 'Viewers', value: String(stream.viewer_count), inline: true },
+          ],
+          image: {
+            url: stream.thumbnail_url
+              .replace('{width}', '640')
+              .replace('{height}', '360'),
+          },
+          timestamp: stream.started_at,
+        };
+        await api.createPendingPost({
+          guildId: sub.guildId,
+          channelId: sub.channelId,
+          embedJson: embed,
+          source: `twitch:${sub.twitchUsername}`,
+        });
+        await api.updateTwitchState(sub.id, { streamId: stream.id });
+      } else if (!stream && seenStreamId) {
+        // Stream ended — clear our state so the next start is announced.
+        await api.updateTwitchState(sub.id, { streamId: null });
+      } else {
+        await api.updateTwitchState(sub.id, { streamId: seenStreamId });
+      }
+    } catch (err) {
+      log.warn('Twitch poll failed', { id: sub.id, err: String(err) });
     }
   }
 }
