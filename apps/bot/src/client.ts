@@ -7,6 +7,7 @@ import { registerAuditEvents } from './events/audit.js';
 import { registerAutomodEvents } from './events/automod.js';
 import { registerAutoResponseEvents } from './events/auto-response.js';
 import { registerLevelingEvents } from './events/leveling.js';
+import { registerMessageActivityEvents } from './events/message-activity.js';
 import { startScheduler } from './scheduler.js';
 
 export function createClient(): Client {
@@ -30,6 +31,7 @@ export function createClient(): Client {
   registerAutomodEvents(client);
   registerAutoResponseEvents(client);
   registerLevelingEvents(client);
+  registerMessageActivityEvents(client);
   startScheduler(client);
 
   return client;

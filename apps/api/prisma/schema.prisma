@@ -36,7 +36,24 @@ model Guild {
   ticketConfig         TicketConfig?
   ticketCategories     TicketCategory[]
   tickets              Ticket[]
+  messageActivity      MessageActivity[]
   caseCounter          CaseCounter?
+}
+
+// Per-(channel, day, hour) message counters. The bot keeps an in-memory tally
+// in messageCreate and flushes deltas to the API every ~60 seconds. Stats
+// endpoints (heatmap, totals) read this rollup.
+model MessageActivity {
+  guildId    String
+  channelId  String
+  date       DateTime @db.Date
+  hour       Int
+  count      Int      @default(0)
+
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, channelId, date, hour])
+  @@index([guildId, date])
 }
 
 model TicketConfig {

@@ -18,6 +18,7 @@ import {
 } from '@discord-bot/shared';
 import { HttpError } from '../../errors.js';
 import { DiscordAuthError } from '../../discord.js';
+import { channelHeatmap, memberGrowth, modActionsTrend, topTargets } from '../stats.js';
 import {
   getManageableGuilds,
   guildIconUrl,
@@ -922,6 +923,70 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
           closeReason: t.closeReason,
         })),
       };
+    },
+  );
+
+  // ─── Stats ────────────────────────────────────────────────────────────
+  app.get(
+    '/admin/guilds/:guildId/stats/mod-actions-trend',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({ days: z.coerce.number().int().min(1).max(180).default(30) }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      return { trend: await modActionsTrend(app.prisma, guildId, req.query.days) };
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/stats/member-growth',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({ days: z.coerce.number().int().min(1).max(180).default(30) }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      return { trend: await memberGrowth(app.prisma, guildId, req.query.days) };
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/stats/top-targets',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({
+          days: z.coerce.number().int().min(1).max(180).default(30),
+          limit: z.coerce.number().int().min(1).max(50).default(10),
+        }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      return { top: await topTargets(app.prisma, guildId, req.query.days, req.query.limit) };
+    },
+  );
+
+  app.get(
+    '/admin/guilds/:guildId/stats/channel-heatmap',
+    {
+      schema: {
+        params: Params,
+        querystring: z.object({ days: z.coerce.number().int().min(1).max(60).default(7) }),
+      },
+    },
+    async (req, reply) => {
+      const { guildId } = req.params;
+      await ensureGuildAccess(app, req, reply, guildId);
+      return { heatmap: await channelHeatmap(app.prisma, guildId, req.query.days) };
     },
   );
 
