@@ -1,13 +1,16 @@
 import {
+  ChannelType,
   Events,
   MessageFlags,
   type ButtonInteraction,
   type Client,
   type StringSelectMenuInteraction,
+  type TextChannel,
 } from 'discord.js';
 import { log } from '../logger.js';
 import { getCommandRegistry } from '../commands/registry.js';
 import { api, ApiError } from '../api-client.js';
+import { pollMessagePayload } from '../util/poll-render.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -29,6 +32,10 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('rr:button:')) {
           await handleReactionRoleButton(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('poll:vote:')) {
+          await handlePollVote(interaction);
           return;
         }
       }
@@ -160,6 +167,43 @@ async function handleReactionRoleSelect(interaction: StringSelectMenuInteraction
     await interaction.editReply('✅ Roles updated.');
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Failed to update roles.';
+    await interaction.editReply(msg);
+  }
+}
+
+async function handlePollVote(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  const [, , pollId, optionId] = interaction.customId.split(':');
+  if (!pollId || !optionId) return;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const current = await api.getPoll(interaction.guildId, pollId);
+    if (current.closedAt) {
+      await interaction.editReply('That poll is closed.');
+      return;
+    }
+    // v0.5 keeps the vote model simple: clicking a button sets the vote to
+    // that single option, even for multi-select polls. Richer interactions
+    // (toggle, clear) can be added via a select-menu component later.
+    void current;
+    const updated = await api.votePoll(interaction.guildId, pollId, {
+      userId: interaction.user.id,
+      optionIds: [optionId],
+    });
+    if (updated.channelId && updated.messageId) {
+      const channel = interaction.guild.channels.cache.get(updated.channelId);
+      if (channel && channel.type === ChannelType.GuildText) {
+        const message = await (channel as TextChannel).messages
+          .fetch(updated.messageId)
+          .catch(() => null);
+        if (message) await message.edit(pollMessagePayload(updated)).catch(() => {});
+      }
+    }
+    const picked = updated.options.find((o) => o.id === optionId);
+    await interaction.editReply(`✅ Voted for **${picked?.label ?? 'option'}**.`);
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Vote failed.';
     await interaction.editReply(msg);
   }
 }

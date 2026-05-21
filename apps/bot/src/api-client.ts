@@ -4,15 +4,25 @@ import type {
   AuditEventType,
   AutomodConfig,
   AutomodHit,
+  AutoResponse,
   CreateAuditEventInput,
   CreateAutomodHitInput,
+  CreateAutoResponseInput,
   CreateModActionInput,
   CreateModNoteInput,
+  CreatePollInput,
+  CreateReminderInput,
+  CreateTagInput,
   LoggingConfig,
   ModAction,
   ModActionType,
   ModNote,
+  Poll,
   ReactionRolePanel,
+  Reminder,
+  Tag,
+  UpdateAutoResponseInput,
+  UpdateTagInput,
   VerificationConfig,
   UpdateVerificationConfigInput,
   WarningPolicy,
@@ -179,4 +189,53 @@ export const api = {
       method: 'PATCH',
       body,
     }),
+
+  // Polls
+  createPoll: (guildId: string, body: CreatePollInput) =>
+    call<Poll>(`/guilds/${guildId}/polls`, { method: 'POST', body }),
+  getPoll: (guildId: string, pollId: string) =>
+    call<Poll>(`/guilds/${guildId}/polls/${pollId}`),
+  updatePoll: (
+    guildId: string,
+    pollId: string,
+    body: { messageId?: string | null; close?: boolean },
+  ) => call<Poll>(`/guilds/${guildId}/polls/${pollId}`, { method: 'PATCH', body }),
+  votePoll: (
+    guildId: string,
+    pollId: string,
+    body: { userId: string; optionIds: string[] },
+  ) => call<Poll>(`/guilds/${guildId}/polls/${pollId}/vote`, { method: 'POST', body }),
+  duePolls: () => call<{ polls: Poll[] }>(`/polls/due`),
+
+  // Reminders
+  createReminder: (body: CreateReminderInput) =>
+    call<Reminder>(`/reminders`, { method: 'POST', body }),
+  listReminders: (userId: string) =>
+    call<{ reminders: Reminder[] }>(`/users/${userId}/reminders`),
+  deleteReminder: (reminderId: string) =>
+    call<void>(`/reminders/${reminderId}`, { method: 'DELETE' }),
+  dueReminders: () => call<{ reminders: Reminder[] }>(`/reminders/due`),
+
+  // Tags
+  listTags: (guildId: string) => call<{ tags: Tag[] }>(`/guilds/${guildId}/tags`),
+  getTag: (guildId: string, name: string) =>
+    call<Tag>(`/guilds/${guildId}/tags/${encodeURIComponent(name)}`),
+  createTag: (guildId: string, body: CreateTagInput) =>
+    call<Tag>(`/guilds/${guildId}/tags`, { method: 'POST', body }),
+  updateTag: (guildId: string, name: string, body: UpdateTagInput) =>
+    call<Tag>(`/guilds/${guildId}/tags/${encodeURIComponent(name)}`, { method: 'PATCH', body }),
+  deleteTag: (guildId: string, name: string) =>
+    call<void>(`/guilds/${guildId}/tags/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  touchTag: (guildId: string, name: string) =>
+    call<Tag>(`/guilds/${guildId}/tags/${encodeURIComponent(name)}/touch`, { method: 'POST' }),
+
+  // Auto-responses
+  listAutoResponses: (guildId: string) =>
+    call<{ autoResponses: AutoResponse[] }>(`/guilds/${guildId}/auto-responses`),
+  createAutoResponse: (guildId: string, body: CreateAutoResponseInput) =>
+    call<AutoResponse>(`/guilds/${guildId}/auto-responses`, { method: 'POST', body }),
+  updateAutoResponse: (guildId: string, id: string, body: UpdateAutoResponseInput) =>
+    call<AutoResponse>(`/guilds/${guildId}/auto-responses/${id}`, { method: 'PATCH', body }),
+  deleteAutoResponse: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/auto-responses/${id}`, { method: 'DELETE' }),
 };

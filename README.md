@@ -38,6 +38,10 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Auto-moderation** | Per-guild rules for anti-spam, anti-invite, mass-mention, CAPS, emoji-spam, zalgo, link allow/block lists, badwords, phishing domains; per-join rules for new accounts and raid lockdown; configurable action (delete/warn/timeout/kick/ban) and exempt roles/channels |
 | **Onboarding** | Join/leave + DM templates, auto-role on join, milestone announcements, button-based verification gate |
 | **Reaction roles** | Self-serve role panels rendered as buttons (≤ 5 options) or a dropdown, with optional exclusive groups |
+| **Polls** | `/poll create` with up to 10 options, anonymous mode, multi-select, optional auto-close |
+| **Reminders** | `/remindme` personal reminders posted in-channel or DM'd, with `/reminders list`/`cancel` |
+| **Tags** | `/tag add|edit|remove|list|show` canned-content snippets with usage counters |
+| **Auto-responses** | Keyword → message auto-replies with contains/word/exact matching |
 | **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome / verification / reaction-roles / logging / policy config screens |
 
 ## Project layout

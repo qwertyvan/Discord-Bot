@@ -23,7 +23,105 @@ model Guild {
   auditEvents          AuditEvent[]
   automodHits          AutomodHit[]
   reactionRolePanels   ReactionRolePanel[]
+  polls                Poll[]
+  reminders            Reminder[]
+  tags                 Tag[]
+  autoResponses        AutoResponse[]
   caseCounter          CaseCounter?
+}
+
+model Poll {
+  id            String       @id @default(uuid())
+  guildId       String
+  channelId     String
+  messageId     String?
+  authorId      String
+  question      String       @db.VarChar(300)
+  anonymous     Boolean      @default(false)
+  multiSelect   Boolean      @default(false)
+  closesAt      DateTime?
+  closedAt      DateTime?
+  createdAt     DateTime     @default(now())
+
+  guild         Guild        @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  options       PollOption[]
+  votes         PollVote[]
+
+  @@index([guildId, createdAt])
+  @@index([closesAt])
+}
+
+model PollOption {
+  id        String     @id @default(uuid())
+  pollId    String
+  label     String     @db.VarChar(80)
+  position  Int
+
+  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes     PollVote[]
+
+  @@index([pollId, position])
+}
+
+model PollVote {
+  pollId    String
+  optionId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@id([pollId, optionId, userId])
+  @@index([pollId, userId])
+}
+
+model Reminder {
+  id        String   @id @default(uuid())
+  guildId   String?  // null = DM reminder
+  userId    String
+  channelId String?  // null = DM the user
+  content   String   @db.VarChar(500)
+  runAt     DateTime
+  createdAt DateTime @default(now())
+
+  guild     Guild?   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([runAt])
+  @@index([userId, runAt])
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  guildId   String
+  name      String   @db.VarChar(64)
+  content   String   @db.VarChar(2000)
+  authorId  String
+  uses      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, name])
+  @@index([guildId])
+}
+
+model AutoResponse {
+  id            String   @id @default(uuid())
+  guildId       String
+  trigger       String   @db.VarChar(200)
+  // "contains" matches substring; "word" matches whole word; "exact" matches whole message.
+  matchType     String   @default("contains") @db.VarChar(16)
+  caseSensitive Boolean  @default(false)
+  response      String   @db.VarChar(2000)
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
 }
 
 model VerificationConfig {
