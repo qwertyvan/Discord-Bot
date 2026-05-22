@@ -8,39 +8,39 @@ datasource db {
 }
 
 model Guild {
-  id        String   @id // Discord snowflake
-  name      String
-  iconUrl   String?
-  addedAt   DateTime @default(now())
+  id      String   @id // Discord snowflake
+  name    String
+  iconUrl String?
+  addedAt DateTime @default(now())
 
-  welcome              WelcomeConfig?
-  loggingConfig        LoggingConfig?
-  warningPolicy        WarningPolicy?
-  automodConfig        AutomodConfig?
-  verificationConfig   VerificationConfig?
-  modActions           ModAction[]
-  modNotes             ModNote[]
-  auditEvents          AuditEvent[]
-  automodHits          AutomodHit[]
-  reactionRolePanels   ReactionRolePanel[]
-  polls                Poll[]
-  reminders            Reminder[]
-  tags                 Tag[]
-  autoResponses        AutoResponse[]
-  levelConfig          LevelConfig?
-  memberLevels         MemberLevel[]
-  economyConfig        EconomyConfig?
-  balances             Balance[]
-  shopItems            ShopItem[]
-  inventoryEntries     InventoryEntry[]
-  ticketConfig         TicketConfig?
-  ticketCategories     TicketCategory[]
-  tickets              Ticket[]
-  messageActivity      MessageActivity[]
-  integrations         IntegrationSubscription[]
+  welcome                WelcomeConfig?
+  loggingConfig          LoggingConfig?
+  warningPolicy          WarningPolicy?
+  automodConfig          AutomodConfig?
+  verificationConfig     VerificationConfig?
+  modActions             ModAction[]
+  modNotes               ModNote[]
+  auditEvents            AuditEvent[]
+  automodHits            AutomodHit[]
+  reactionRolePanels     ReactionRolePanel[]
+  polls                  Poll[]
+  reminders              Reminder[]
+  tags                   Tag[]
+  autoResponses          AutoResponse[]
+  levelConfig            LevelConfig?
+  memberLevels           MemberLevel[]
+  economyConfig          EconomyConfig?
+  balances               Balance[]
+  shopItems              ShopItem[]
+  inventoryEntries       InventoryEntry[]
+  ticketConfig           TicketConfig?
+  ticketCategories       TicketCategory[]
+  tickets                Ticket[]
+  messageActivity        MessageActivity[]
+  integrations           IntegrationSubscription[]
   integrationCredentials IntegrationCredential[]
-  pendingPosts         PendingPost[]
-  adminActions         AdminAction[]
+  pendingPosts           PendingPost[]
+  adminActions           AdminAction[]
   scheduledAnnouncements ScheduledAnnouncement[]
   birthdayConfig       BirthdayConfig?
   userBirthdays        UserBirthday[]
@@ -55,6 +55,9 @@ model Guild {
   ttsConfig            TtsConfig?
   activitySnapshots    ActivitySnapshot[]
   channelDailyActivity ChannelDailyActivity[]
+  memberActivity        MemberActivity[]
+  activityRoleRules     ActivityRoleRule[]
+  inactivityPrunePolicy InactivityPrunePolicy?
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -70,6 +73,46 @@ model VoiceHubChannel {
   createdAt   DateTime @default(now())
 
   guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+// Per-(guild, user) running activity totals used by activity-role rules and
+// the inactivity-prune policy. The bot increments these via a 60-second
+// batched flush; `lastActiveAt` is touched on every message and voice-minute
+// award so the prune policy can identify members idle for N days.
+model MemberActivity {
+  guildId      String
+  userId       String
+  messages     Int      @default(0)
+  voiceMinutes Int      @default(0)
+  lastActiveAt DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, lastActiveAt])
+}
+
+// A rule that grants or revokes a Discord role based on whether a member's
+// activity over the last `windowDays` meets the configured thresholds. The
+// bot's daily scheduler evaluates every enabled rule and reconciles role
+// membership accordingly.
+model ActivityRoleRule {
+  id              String   @id @default(uuid())
+  guildId         String
+  roleId          String
+  minMessages     Int      @default(0)
+  minVoiceMinutes Int      @default(0)
+  windowDays      Int      @default(30)
+  // 'grant' adds the role when the member meets the thresholds; 'revoke'
+  // removes the role when they meet the thresholds (i.e. a "minimum-activity
+  // demotion" gate).
+  action          String   @db.VarChar(16)
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId])
 }
@@ -152,6 +195,20 @@ model ChannelDailyActivity {
   @@index([guildId])
 }
 
+// Optional per-guild policy: members inactive for `inactiveDays` may be
+// kicked. Evaluated on demand via `/prune preview` and `/prune run`; never
+// runs automatically unless `enabled` is true.
+model InactivityPrunePolicy {
+  guildId        String   @id
+  enabled        Boolean  @default(false)
+  inactiveDays   Int      @default(60)
+  excludeRoleIds String[] @default([])
+  notifyDm       Boolean  @default(true)
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every
 // `throttleMessages` user messages. One sticky per channel max.
 model StickyMessage {
@@ -163,76 +220,76 @@ model StickyMessage {
   lastMessageId    String?
   throttleMessages Int      @default(5)
   enabled          Boolean  @default(true)
-  updatedAt        DateTime @updatedAt @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
 
-  guild            Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, channelId])
   @@index([guildId])
 }
 
 model Suggestion {
-  id          String           @id @default(uuid())
-  guildId     String
-  channelId   String
-  messageId   String?
-  authorId    String
-  content     String           @db.VarChar(2000)
+  id         String    @id @default(uuid())
+  guildId    String
+  channelId  String
+  messageId  String?
+  authorId   String
+  content    String    @db.VarChar(2000)
   // 'open' | 'accepted' | 'rejected' | 'implemented'
-  status      String           @default("open") @db.VarChar(16)
-  reviewNote  String?          @db.VarChar(500)
-  reviewedBy  String?
-  reviewedAt  DateTime?
-  createdAt   DateTime         @default(now())
+  status     String    @default("open") @db.VarChar(16)
+  reviewNote String?   @db.VarChar(500)
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
 
-  guild       Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  votes       SuggestionVote[]
+  guild Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  votes SuggestionVote[]
 
   @@index([guildId, status, createdAt])
 }
 
 model SuggestionVote {
-  suggestionId  String
-  userId        String
+  suggestionId String
+  userId       String
   // 1 = upvote, -1 = downvote
-  vote          Int
-  createdAt     DateTime @default(now())
+  vote         Int
+  createdAt    DateTime @default(now())
 
-  suggestion    Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  suggestion Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
 
   @@id([suggestionId, userId])
 }
 
 model ScheduledAnnouncement {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   guildId     String
   channelId   String
-  content     String?  @db.VarChar(2000)
+  content     String?   @db.VarChar(2000)
   embedJson   Json?
   runAt       DateTime
   // When set, re-fires every N seconds and runAt advances on each firing.
   repeatEvery Int?
   lastRunAt   DateTime?
-  enabled     Boolean  @default(true)
+  enabled     Boolean   @default(true)
   createdBy   String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
-  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([enabled, runAt])
   @@index([guildId, runAt])
 }
 
 model BirthdayConfig {
-  guildId            String    @id
-  enabled            Boolean   @default(false)
-  channelId          String?
-  template           String?   @db.VarChar(500)
-  announceHour       Int       @default(12)
-  lastAnnouncedDate  DateTime? @db.Date
-  updatedAt          DateTime  @updatedAt
+  guildId           String    @id
+  enabled           Boolean   @default(false)
+  channelId         String?
+  template          String?   @db.VarChar(500)
+  announceHour      Int       @default(12)
+  lastAnnouncedDate DateTime? @db.Date
+  updatedAt         DateTime  @updatedAt
 
-  guild              Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model UserBirthday {
@@ -241,29 +298,29 @@ model UserBirthday {
   month     Int
   day       Int
   year      Int?
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
-  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, userId])
   @@index([guildId, month, day])
 }
 
 model Event {
-  id          String      @id @default(uuid())
+  id          String    @id @default(uuid())
   guildId     String
   channelId   String
   messageId   String?
-  title       String      @db.VarChar(200)
-  description String?     @db.VarChar(2000)
+  title       String    @db.VarChar(200)
+  description String?   @db.VarChar(2000)
   startsAt    DateTime
   endsAt      DateTime?
-  location    String?     @db.VarChar(200)
+  location    String?   @db.VarChar(200)
   createdBy   String
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime  @default(now())
 
-  guild       Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  rsvps       EventRsvp[]
+  guild Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  rsvps EventRsvp[]
 
   @@index([guildId, startsAt])
 }
@@ -274,7 +331,7 @@ model EventRsvp {
   status      String   @db.VarChar(8)
   respondedAt DateTime @default(now())
 
-  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@id([eventId, userId])
   @@index([eventId])
@@ -284,16 +341,16 @@ model EventRsvp {
 // dashboard can show "X enabled automod" / "Y deleted ticket category Z"
 // and trace config changes over time.
 model AdminAction {
-  id          String   @id @default(uuid())
-  guildId     String?
-  userId      String
-  method      String   @db.VarChar(8)
-  path        String   @db.VarChar(256)
-  summary     Json     @default("{}")
-  status      Int
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  guildId   String?
+  userId    String
+  method    String   @db.VarChar(8)
+  path      String   @db.VarChar(256)
+  summary   Json     @default("{}")
+  status    Int
+  createdAt DateTime @default(now())
 
-  guild       Guild?   @relation(fields: [guildId], references: [id], onDelete: SetNull)
+  guild Guild? @relation(fields: [guildId], references: [id], onDelete: SetNull)
 
   @@index([guildId, createdAt])
   @@index([userId, createdAt])
@@ -319,7 +376,7 @@ model CustomCommand {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@unique([guildId, name])
   @@index([guildId])
@@ -340,26 +397,26 @@ model ShortLink {
 }
 
 model IntegrationSubscription {
-  id            String    @id @default(uuid())
-  guildId       String
-  channelId     String
-  name          String    @db.VarChar(80)
+  id             String    @id @default(uuid())
+  guildId        String
+  channelId      String
+  name           String    @db.VarChar(80)
   // 'rss' | 'webhook' | 'twitch'.
-  kind          String    @db.VarChar(16)
+  kind           String    @db.VarChar(16)
   // RSS-only:
-  rssUrl        String?
-  lastSeenGuid  String?
-  lastPolledAt  DateTime?
-  pollInterval  Int       @default(600)
+  rssUrl         String?
+  lastSeenGuid   String?
+  lastPolledAt   DateTime?
+  pollInterval   Int       @default(600)
   // Webhook-only:
-  token         String?   @unique
-  secret        String?
+  token          String?   @unique
+  secret         String?
   // Twitch-only (login name, e.g. "shroud").
   twitchUsername String?
-  enabled       Boolean   @default(true)
-  createdAt     DateTime  @default(now())
+  enabled        Boolean   @default(true)
+  createdAt      DateTime  @default(now())
 
-  guild         Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId])
   @@index([kind, enabled, lastPolledAt])
@@ -370,13 +427,13 @@ model IntegrationSubscription {
 // `provider` + `key` form a per-guild composite (e.g. provider='twitch',
 // key='client_id').
 model IntegrationCredential {
-  guildId    String
-  provider   String   @db.VarChar(32)
-  key        String   @db.VarChar(32)
-  value      String   // encrypted
-  updatedAt  DateTime @updatedAt @default(now())
+  guildId   String
+  provider  String   @db.VarChar(32)
+  key       String   @db.VarChar(32)
+  value     String // encrypted
+  updatedAt DateTime @default(now()) @updatedAt
 
-  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, provider, key])
   @@index([guildId, provider])
@@ -385,16 +442,16 @@ model IntegrationCredential {
 // Queue of messages to be posted by the bot. Populated by webhook ingress
 // and RSS polling; the bot drains the queue on its scheduler tick.
 model PendingPost {
-  id          String   @id @default(uuid())
-  guildId     String
-  channelId   String
-  content     String?  @db.VarChar(2000)
-  embedJson   Json?
+  id        String   @id @default(uuid())
+  guildId   String
+  channelId String
+  content   String?  @db.VarChar(2000)
+  embedJson Json?
   // Source label for attribution.
-  source      String?  @db.VarChar(80)
-  createdAt   DateTime @default(now())
+  source    String?  @db.VarChar(80)
+  createdAt DateTime @default(now())
 
-  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
 }
@@ -403,79 +460,79 @@ model PendingPost {
 // in messageCreate and flushes deltas to the API every ~60 seconds. Stats
 // endpoints (heatmap, totals) read this rollup.
 model MessageActivity {
-  guildId    String
-  channelId  String
-  date       DateTime @db.Date
-  hour       Int
-  count      Int      @default(0)
+  guildId   String
+  channelId String
+  date      DateTime @db.Date
+  hour      Int
+  count     Int      @default(0)
 
-  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, channelId, date, hour])
   @@index([guildId, date])
 }
 
 model TicketConfig {
-  guildId             String   @id
-  enabled             Boolean  @default(false)
-  panelChannelId      String?
-  panelMessageId      String?
-  staffRoleId         String?
-  defaultSlaSeconds   Int?
-  transcriptChannelId String?
+  guildId              String   @id
+  enabled              Boolean  @default(false)
+  panelChannelId       String?
+  panelMessageId       String?
+  staffRoleId          String?
+  defaultSlaSeconds    Int?
+  transcriptChannelId  String?
   // Seconds of staff silence after the user's last message before the bot
   // pings the staff role with an SLA reminder. Null disables.
-  slaReminderSeconds  Int?
+  slaReminderSeconds   Int?
   // Seconds of total ticket-thread inactivity before the bot auto-closes.
   // Null disables.
   idleAutoCloseSeconds Int?
   // When true, on close the bot uploads an HTML transcript to
   // transcriptChannelId (or the ticket thread if not set).
-  transcriptsEnabled  Boolean  @default(false)
-  updatedAt           DateTime @updatedAt
+  transcriptsEnabled   Boolean  @default(false)
+  updatedAt            DateTime @updatedAt
 
-  guild               Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model TicketCategory {
-  id           String   @id @default(uuid())
-  guildId      String
-  name         String   @db.VarChar(80)
-  description  String?  @db.VarChar(300)
-  emoji        String?  @db.VarChar(64)
-  staffRoleId  String?
-  slaSeconds   Int?
-  position     Int      @default(0)
-  createdAt    DateTime @default(now())
+  id          String   @id @default(uuid())
+  guildId     String
+  name        String   @db.VarChar(80)
+  description String?  @db.VarChar(300)
+  emoji       String?  @db.VarChar(64)
+  staffRoleId String?
+  slaSeconds  Int?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
 
-  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  tickets      Ticket[]
+  guild   Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
 
   @@unique([guildId, name])
   @@index([guildId, position])
 }
 
 model Ticket {
-  id              String           @id @default(uuid())
-  guildId         String
-  categoryId      String?
-  userId          String
-  channelId       String
-  number          Int
-  status          String           @default("open") @db.VarChar(16)
-  subject         String?          @db.VarChar(200)
-  assignedTo      String?
-  openedAt        DateTime         @default(now())
-  closedAt        DateTime?
-  closedBy        String?
-  closeReason     String?          @db.VarChar(500)
+  id             String    @id @default(uuid())
+  guildId        String
+  categoryId     String?
+  userId         String
+  channelId      String
+  number         Int
+  status         String    @default("open") @db.VarChar(16)
+  subject        String?   @db.VarChar(200)
+  assignedTo     String?
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+  closedBy       String?
+  closeReason    String?   @db.VarChar(500)
   // Updated whenever a message is posted in the ticket thread.
-  lastActivityAt  DateTime?
+  lastActivityAt DateTime?
   // Set when the bot fires the SLA-reminder ping so we don't re-fire.
-  slaReminderAt   DateTime?
+  slaReminderAt  DateTime?
 
-  guild           Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  category        TicketCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  guild    Guild           @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  category TicketCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@unique([guildId, number])
   @@index([guildId, status, openedAt])
@@ -497,18 +554,18 @@ model EconomyConfig {
   gamblingEnabled      Boolean  @default(true)
   updatedAt            DateTime @updatedAt
 
-  guild                Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model Balance {
-  guildId      String
-  userId       String
-  amount       Int       @default(0)
-  lastDailyAt  DateTime?
-  lastWorkAt   DateTime?
-  updatedAt    DateTime  @updatedAt @default(now())
+  guildId     String
+  userId      String
+  amount      Int       @default(0)
+  lastDailyAt DateTime?
+  lastWorkAt  DateTime?
+  updatedAt   DateTime  @default(now()) @updatedAt
 
-  guild        Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, userId])
   @@index([guildId, amount(sort: Desc)])
@@ -527,99 +584,99 @@ model ShopItem {
   stock       Int?
   createdAt   DateTime @default(now())
 
-  guild       Guild              @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  inventory   InventoryEntry[]
+  guild     Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  inventory InventoryEntry[]
 
   @@unique([guildId, name])
   @@index([guildId])
 }
 
 model InventoryEntry {
-  id         String   @id @default(uuid())
-  guildId    String
-  userId     String
-  itemId     String
-  quantity   Int      @default(1)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  guildId   String
+  userId    String
+  itemId    String
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
 
-  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  item       ShopItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  guild Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  item  ShopItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([guildId, userId])
 }
 
 model LevelConfig {
-  guildId               String   @id
-  enabled               Boolean  @default(false)
+  guildId             String   @id
+  enabled             Boolean  @default(false)
   // XP awarded for each non-bot message (subject to cooldown).
-  perMessageXp          Int      @default(15)
+  perMessageXp        Int      @default(15)
   // Minimum seconds between XP-eligible messages from the same user.
-  textCooldownSeconds   Int      @default(60)
+  textCooldownSeconds Int      @default(60)
   // XP awarded per minute of voice activity.
   voiceXpPerMinute      Int      @default(5)
   // Master switch for the per-minute voice-XP scheduler. When false, the bot
   // still tracks sessions but doesn't award XP for them.
   voiceXpEnabled        Boolean  @default(false)
   // Channel for level-up announcements; null = reply in-place.
-  levelUpChannelId      String?
+  levelUpChannelId    String?
   // Defaults to "🎉 {user} just reached level {level}!".
-  levelUpTemplate       String?
+  levelUpTemplate     String?
   // JSON: { "channelId": multiplier (number) }
-  channelMultipliers    Json     @default("{}")
+  channelMultipliers  Json     @default("{}")
   // JSON: [{ "level": N, "roleId": "..." }]
-  roleRewards           Json     @default("[]")
+  roleRewards         Json     @default("[]")
   // JSON: array of role IDs whose members don't earn XP.
-  noXpRoleIds           Json     @default("[]")
+  noXpRoleIds         Json     @default("[]")
   // When true, /rank attaches a rendered PNG card instead of an embed.
-  rankCardEnabled       Boolean  @default(false)
-  updatedAt             DateTime @updatedAt
+  rankCardEnabled     Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
 
-  guild                 Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model MemberLevel {
-  guildId        String
-  userId         String
-  xp             Int       @default(0)
-  lastTextXpAt   DateTime?
-  voiceMinutes   Int       @default(0)
-  updatedAt      DateTime  @updatedAt @default(now())
+  guildId      String
+  userId       String
+  xp           Int       @default(0)
+  lastTextXpAt DateTime?
+  voiceMinutes Int       @default(0)
+  updatedAt    DateTime  @default(now()) @updatedAt
 
-  guild          Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, userId])
   @@index([guildId, xp(sort: Desc)])
 }
 
 model Poll {
-  id            String       @id @default(uuid())
-  guildId       String
-  channelId     String
-  messageId     String?
-  authorId      String
-  question      String       @db.VarChar(300)
-  anonymous     Boolean      @default(false)
-  multiSelect   Boolean      @default(false)
-  closesAt      DateTime?
-  closedAt      DateTime?
-  createdAt     DateTime     @default(now())
+  id          String    @id @default(uuid())
+  guildId     String
+  channelId   String
+  messageId   String?
+  authorId    String
+  question    String    @db.VarChar(300)
+  anonymous   Boolean   @default(false)
+  multiSelect Boolean   @default(false)
+  closesAt    DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime  @default(now())
 
-  guild         Guild        @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  options       PollOption[]
-  votes         PollVote[]
+  guild   Guild        @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  options PollOption[]
+  votes   PollVote[]
 
   @@index([guildId, createdAt])
   @@index([closesAt])
 }
 
 model PollOption {
-  id        String     @id @default(uuid())
-  pollId    String
-  label     String     @db.VarChar(80)
-  position  Int
+  id       String @id @default(uuid())
+  pollId   String
+  label    String @db.VarChar(80)
+  position Int
 
-  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
-  votes     PollVote[]
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
 
   @@index([pollId, position])
 }
@@ -630,8 +687,8 @@ model PollVote {
   userId    String
   createdAt DateTime @default(now())
 
-  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
-  option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
 
   @@id([pollId, optionId, userId])
   @@index([pollId, userId])
@@ -639,14 +696,14 @@ model PollVote {
 
 model Reminder {
   id        String   @id @default(uuid())
-  guildId   String?  // null = DM reminder
+  guildId   String? // null = DM reminder
   userId    String
-  channelId String?  // null = DM the user
+  channelId String? // null = DM the user
   content   String   @db.VarChar(500)
   runAt     DateTime
   createdAt DateTime @default(now())
 
-  guild     Guild?   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild? @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([runAt])
   @@index([userId, runAt])
@@ -662,7 +719,7 @@ model Tag {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@unique([guildId, name])
   @@index([guildId])
@@ -680,87 +737,87 @@ model AutoResponse {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId])
 }
 
 model VerificationConfig {
-  guildId         String   @id
-  enabled         Boolean  @default(false)
-  channelId       String?  // where the verify button is posted
-  messageId       String?  // the message that hosts the button
-  verifiedRoleId  String?
-  buttonLabel     String?  // defaults to "Verify"
-  prompt          String?  // header / instruction text
-  updatedAt       DateTime @updatedAt
+  guildId        String   @id
+  enabled        Boolean  @default(false)
+  channelId      String? // where the verify button is posted
+  messageId      String? // the message that hosts the button
+  verifiedRoleId String?
+  buttonLabel    String? // defaults to "Verify"
+  prompt         String? // header / instruction text
+  updatedAt      DateTime @updatedAt
 
-  guild           Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model ReactionRolePanel {
-  id            String                 @id @default(uuid())
-  guildId       String
-  channelId     String
-  messageId     String?                // null until the panel is posted
-  name          String
-  description   String?
+  id          String   @id @default(uuid())
+  guildId     String
+  channelId   String
+  messageId   String? // null until the panel is posted
+  name        String
+  description String?
   // When true, picking one option removes the others' roles.
-  exclusive     Boolean                @default(false)
+  exclusive   Boolean  @default(false)
   // Render as a dropdown instead of buttons (forced when > 5 options).
-  useDropdown   Boolean                @default(false)
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  useDropdown Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  guild         Guild                  @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  options       ReactionRoleOption[]
+  guild   Guild                @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  options ReactionRoleOption[]
 
-  @@index([guildId])
   @@unique([guildId, name])
+  @@index([guildId])
 }
 
 model ReactionRoleOption {
-  id            String              @id @default(uuid())
-  panelId       String
-  roleId        String
-  label         String
-  description   String?
+  id          String  @id @default(uuid())
+  panelId     String
+  roleId      String
+  label       String
+  description String?
   // Unicode emoji or "<a?:name:id>" custom-emoji syntax.
-  emoji         String?
+  emoji       String?
   // Display order within the panel.
-  position      Int                 @default(0)
+  position    Int     @default(0)
 
-  panel         ReactionRolePanel   @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  panel ReactionRolePanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
 
   @@index([panelId, position])
 }
 
 model AutomodConfig {
-  guildId        String   @id
-  enabled        Boolean  @default(false)
+  guildId          String   @id
+  enabled          Boolean  @default(false)
   // Roles whose members bypass all automod rules.
-  exemptRoleIds  Json     @default("[]")
+  exemptRoleIds    Json     @default("[]")
   // Channels whose messages skip automod entirely.
-  exemptChannelIds Json   @default("[]")
+  exemptChannelIds Json     @default("[]")
   // Per-rule configuration. See packages/shared/src/automod.ts for the schema.
-  rules          Json     @default("{}")
-  updatedAt      DateTime @updatedAt
+  rules            Json     @default("{}")
+  updatedAt        DateTime @updatedAt
 
-  guild          Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model AutomodHit {
-  id         String   @id @default(uuid())
-  guildId    String
-  userId     String
-  channelId  String?
-  rule       String   // rule key (e.g. "antispam", "antiinvite")
-  action     String   // action taken (DELETE, WARN, TIMEOUT, KICK, BAN, NONE)
-  reason     String
-  payload    Json     @default("{}")
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  guildId   String
+  userId    String
+  channelId String?
+  rule      String // rule key (e.g. "antispam", "antiinvite")
+  action    String // action taken (DELETE, WARN, TIMEOUT, KICK, BAN, NONE)
+  reason    String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now())
 
-  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId, createdAt])
   @@index([guildId, userId, createdAt])
@@ -768,47 +825,47 @@ model AutomodHit {
 }
 
 model WelcomeConfig {
-  guildId            String   @id
-  enabled            Boolean  @default(false)
-  channelId          String?
-  joinTemplate       String?
-  leaveTemplate      String?
+  guildId           String   @id
+  enabled           Boolean  @default(false)
+  channelId         String?
+  joinTemplate      String?
+  leaveTemplate     String?
   // Optional DM sent to the joining member (separate from the channel message).
-  dmTemplate         String?
+  dmTemplate        String?
   // Roles assigned automatically to every new member.
-  autoRoleIds        Json     @default("[]")
+  autoRoleIds       Json     @default("[]")
   // Announce milestones (e.g. every 100 members). null disables.
-  milestoneEvery     Int?
-  milestoneTemplate  String?
+  milestoneEvery    Int?
+  milestoneTemplate String?
   // When true, the join message includes a rendered welcome card (PNG).
-  cardEnabled        Boolean  @default(false)
+  cardEnabled       Boolean  @default(false)
   // Optional background image URL (fetched by the bot at render time).
-  cardBackgroundUrl  String?
-  updatedAt          DateTime @updatedAt
+  cardBackgroundUrl String?
+  updatedAt         DateTime @updatedAt
 
-  guild              Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 // Unified moderation action log. Every kick/ban/timeout/warn/etc. produces
 // exactly one row here, carrying a per-guild sequential case number so
 // humans can reference actions by `#42` style IDs in conversation.
 model ModAction {
-  id           String        @id @default(uuid())
-  guildId      String
-  caseNumber   Int
-  type         ModActionType
-  userId       String        // target user
-  moderatorId  String
-  reason       String        @db.VarChar(500)
+  id          String        @id @default(uuid())
+  guildId     String
+  caseNumber  Int
+  type        ModActionType
+  userId      String // target user
+  moderatorId String
+  reason      String        @db.VarChar(500)
   // Optional structured fields per action type.
-  durationMs   Int?          // timeout / mute duration
-  expiresAt    DateTime?     // when the action lapses (warnings, timeouts)
-  category     String?       // freeform category for warnings/notes
-  severity     Int?          @default(1)
-  active       Boolean       @default(true) // false when superseded/expired/deleted
-  createdAt    DateTime      @default(now())
+  durationMs  Int? // timeout / mute duration
+  expiresAt   DateTime? // when the action lapses (warnings, timeouts)
+  category    String? // freeform category for warnings/notes
+  severity    Int?          @default(1)
+  active      Boolean       @default(true) // false when superseded/expired/deleted
+  createdAt   DateTime      @default(now())
 
-  guild        Guild         @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@unique([guildId, caseNumber])
   @@index([guildId, createdAt])
@@ -832,22 +889,22 @@ enum ModActionType {
 // Per-guild monotonically-increasing case counter. Held in its own table so we
 // can atomically increment without locking the entire ModAction table.
 model CaseCounter {
-  guildId  String @id
-  next     Int    @default(1)
+  guildId String @id
+  next    Int    @default(1)
 
-  guild    Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 // Private mod-only notes about a user. Not visible to the user themselves.
 model ModNote {
-  id           String   @id @default(uuid())
-  guildId      String
-  userId       String
-  moderatorId  String
-  content      String   @db.VarChar(1000)
-  createdAt    DateTime @default(now())
+  id          String   @id @default(uuid())
+  guildId     String
+  userId      String
+  moderatorId String
+  content     String   @db.VarChar(1000)
+  createdAt   DateTime @default(now())
 
-  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId, userId, createdAt])
 }
@@ -855,25 +912,25 @@ model ModNote {
 // Per-guild logging configuration. `events` is a JSON object mapping
 // AuditEventType → boolean; missing keys default to true.
 model LoggingConfig {
-  guildId    String   @id
-  enabled    Boolean  @default(false)
-  channelId  String?
-  events     Json     @default("{}")
-  updatedAt  DateTime @updatedAt
+  guildId   String   @id
+  enabled   Boolean  @default(false)
+  channelId String?
+  events    Json     @default("{}")
+  updatedAt DateTime @updatedAt
 
-  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model AuditEvent {
-  id         String           @id @default(uuid())
-  guildId    String
-  type       AuditEventType
-  userId     String?
-  channelId  String?
-  payload    Json             @default("{}")
-  createdAt  DateTime         @default(now())
+  id        String         @id @default(uuid())
+  guildId   String
+  type      AuditEventType
+  userId    String?
+  channelId String?
+  payload   Json           @default("{}")
+  createdAt DateTime       @default(now())
 
-  guild      Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId, createdAt])
   @@index([guildId, type, createdAt])
@@ -898,38 +955,38 @@ enum AuditEventType {
 // Warning policy: auto-expiry and threshold-based escalation.
 // `thresholds` is a JSON array of { count, action, durationMs? }.
 model WarningPolicy {
-  guildId         String   @id
-  expireDays      Int?     // warnings older than this are marked inactive
-  thresholds      Json     @default("[]")
-  muteRoleId      String?  // optional role used by /mute when set
-  updatedAt       DateTime @updatedAt
+  guildId    String   @id
+  expireDays Int? // warnings older than this are marked inactive
+  thresholds Json     @default("[]")
+  muteRoleId String? // optional role used by /mute when set
+  updatedAt  DateTime @updatedAt
 
-  guild           Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model AdminUser {
-  discordId       String    @id
-  username        String
-  globalName      String?
-  avatarUrl       String?
+  discordId      String   @id
+  username       String
+  globalName     String?
+  avatarUrl      String?
   // Discord OAuth2 access token; used only to list the user's manageable guilds
   // via /users/@me/guilds. Stored plaintext; treat the DB as confidential. If
   // Discord returns 401 we drop the session and force a re-login (see
   // src/guild-permissions.ts and src/routes/admin/guilds.ts).
-  accessToken     String
-  tokenExpiresAt  DateTime
-  lastSeenAt      DateTime  @default(now())
+  accessToken    String
+  tokenExpiresAt DateTime
+  lastSeenAt     DateTime @default(now())
 
-  sessions        Session[]
+  sessions Session[]
 }
 
 model Session {
-  id         String   @id @default(uuid())
-  userId     String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
-  user       AdminUser @relation(fields: [userId], references: [discordId], onDelete: Cascade)
+  user AdminUser @relation(fields: [userId], references: [discordId], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
