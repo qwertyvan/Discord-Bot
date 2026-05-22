@@ -67,6 +67,8 @@ import type {
   UpsertSoundboardClipInput,
   TtsConfig,
   UpsertTtsConfigInput,
+  ActivityEventsBatchInput,
+  InsightsSummary,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -130,10 +132,10 @@ export interface CreateModActionResult {
 export const api = {
   // Guild registry
   upsertGuild: (id: string, body: { name: string; iconUrl: string | null }) =>
-    call<{ id: string; name: string; iconUrl: string | null; addedAt: string }>(
-      `/guilds/${id}`,
-      { method: 'PUT', body },
-    ),
+    call<{ id: string; name: string; iconUrl: string | null; addedAt: string }>(`/guilds/${id}`, {
+      method: 'PUT',
+      body,
+    }),
   deleteGuild: (id: string) => call<void>(`/guilds/${id}`, { method: 'DELETE' }),
 
   // Mod actions — unified entry point for warn/kick/ban/timeout/etc.
@@ -179,8 +181,7 @@ export const api = {
     ),
 
   // Warning policy
-  getWarningPolicy: (guildId: string) =>
-    call<WarningPolicy>(`/guilds/${guildId}/warning-policy`),
+  getWarningPolicy: (guildId: string) => call<WarningPolicy>(`/guilds/${guildId}/warning-policy`),
 
   // Audit events / logging
   createAuditEvent: (guildId: string, body: CreateAuditEventInput) =>
@@ -193,18 +194,15 @@ export const api = {
       payload: Record<string, unknown>;
       createdAt: string;
     }>(`/guilds/${guildId}/audit-events`, { method: 'POST', body }),
-  getLoggingConfig: (guildId: string) =>
-    call<LoggingConfig>(`/guilds/${guildId}/logging-config`),
+  getLoggingConfig: (guildId: string) => call<LoggingConfig>(`/guilds/${guildId}/logging-config`),
 
   // Welcome config
-  getWelcomeConfig: (guildId: string) =>
-    call<WelcomeConfig>(`/guilds/${guildId}/welcome`),
+  getWelcomeConfig: (guildId: string) => call<WelcomeConfig>(`/guilds/${guildId}/welcome`),
   updateWelcomeConfig: (guildId: string, body: UpdateWelcomeConfigInput) =>
     call<WelcomeConfig>(`/guilds/${guildId}/welcome`, { method: 'PUT', body }),
 
   // Automod
-  getAutomodConfig: (guildId: string) =>
-    call<AutomodConfig>(`/guilds/${guildId}/automod-config`),
+  getAutomodConfig: (guildId: string) => call<AutomodConfig>(`/guilds/${guildId}/automod-config`),
   createAutomodHit: (guildId: string, body: CreateAutomodHitInput) =>
     call<AutomodHit>(`/guilds/${guildId}/automod-hits`, { method: 'POST', body }),
 
@@ -232,25 +230,20 @@ export const api = {
   // Polls
   createPoll: (guildId: string, body: CreatePollInput) =>
     call<Poll>(`/guilds/${guildId}/polls`, { method: 'POST', body }),
-  getPoll: (guildId: string, pollId: string) =>
-    call<Poll>(`/guilds/${guildId}/polls/${pollId}`),
+  getPoll: (guildId: string, pollId: string) => call<Poll>(`/guilds/${guildId}/polls/${pollId}`),
   updatePoll: (
     guildId: string,
     pollId: string,
     body: { messageId?: string | null; close?: boolean },
   ) => call<Poll>(`/guilds/${guildId}/polls/${pollId}`, { method: 'PATCH', body }),
-  votePoll: (
-    guildId: string,
-    pollId: string,
-    body: { userId: string; optionIds: string[] },
-  ) => call<Poll>(`/guilds/${guildId}/polls/${pollId}/vote`, { method: 'POST', body }),
+  votePoll: (guildId: string, pollId: string, body: { userId: string; optionIds: string[] }) =>
+    call<Poll>(`/guilds/${guildId}/polls/${pollId}/vote`, { method: 'POST', body }),
   duePolls: () => call<{ polls: Poll[] }>(`/polls/due`),
 
   // Reminders
   createReminder: (body: CreateReminderInput) =>
     call<Reminder>(`/reminders`, { method: 'POST', body }),
-  listReminders: (userId: string) =>
-    call<{ reminders: Reminder[] }>(`/users/${userId}/reminders`),
+  listReminders: (userId: string) => call<{ reminders: Reminder[] }>(`/users/${userId}/reminders`),
   deleteReminder: (reminderId: string) =>
     call<void>(`/reminders/${reminderId}`, { method: 'DELETE' }),
   dueReminders: () => call<{ reminders: Reminder[] }>(`/reminders/due`),
@@ -279,8 +272,7 @@ export const api = {
     call<void>(`/guilds/${guildId}/auto-responses/${id}`, { method: 'DELETE' }),
 
   // Leveling
-  getLevelConfig: (guildId: string) =>
-    call<LevelConfig>(`/guilds/${guildId}/level-config`),
+  getLevelConfig: (guildId: string) => call<LevelConfig>(`/guilds/${guildId}/level-config`),
   updateLevelConfig: (guildId: string, body: UpdateLevelConfigInput) =>
     call<LevelConfig>(`/guilds/${guildId}/level-config`, { method: 'PUT', body }),
   awardTextXp: (guildId: string, body: { userId: string; channelId: string }) =>
@@ -330,21 +322,27 @@ export const api = {
     call<void>(`/guilds/${guildId}/level/${userId}`, { method: 'DELETE' }),
 
   // Economy
-  getEconomyConfig: (guildId: string) =>
-    call<EconomyConfig>(`/guilds/${guildId}/economy-config`),
+  getEconomyConfig: (guildId: string) => call<EconomyConfig>(`/guilds/${guildId}/economy-config`),
   getBalance: (guildId: string, userId: string) =>
     call<Balance>(`/guilds/${guildId}/balance/${userId}`),
   claimDaily: (guildId: string, userId: string) =>
-    call<Balance & { reward: number }>(`/guilds/${guildId}/balance/${userId}/daily`, { method: 'POST' }),
+    call<Balance & { reward: number }>(`/guilds/${guildId}/balance/${userId}/daily`, {
+      method: 'POST',
+    }),
   doWork: (guildId: string, userId: string) =>
-    call<Balance & { reward: number }>(`/guilds/${guildId}/balance/${userId}/work`, { method: 'POST' }),
+    call<Balance & { reward: number }>(`/guilds/${guildId}/balance/${userId}/work`, {
+      method: 'POST',
+    }),
   transfer: (guildId: string, fromUserId: string, toUserId: string, amount: number) =>
     call<{ ok: boolean; amount: number }>(`/guilds/${guildId}/balance/${fromUserId}/transfer`, {
       method: 'POST',
       body: { toUserId, amount },
     }),
   adjustBalance: (guildId: string, userId: string, delta: number) =>
-    call<Balance>(`/guilds/${guildId}/balance/${userId}/adjust`, { method: 'POST', body: { delta } }),
+    call<Balance>(`/guilds/${guildId}/balance/${userId}/adjust`, {
+      method: 'POST',
+      body: { delta },
+    }),
   gamble: (guildId: string, userId: string, body: { stake: number; game: 'coinflip' | 'slots' }) =>
     call<
       Balance & {
@@ -356,8 +354,7 @@ export const api = {
         multiplier?: number;
       }
     >(`/guilds/${guildId}/balance/${userId}/gamble`, { method: 'POST', body }),
-  listShop: (guildId: string) =>
-    call<{ items: ShopItem[] }>(`/guilds/${guildId}/shop`),
+  listShop: (guildId: string) => call<{ items: ShopItem[] }>(`/guilds/${guildId}/shop`),
   createShopItem: (guildId: string, body: CreateShopItemInput) =>
     call<ShopItem>(`/guilds/${guildId}/shop`, { method: 'POST', body }),
   deleteShopItem: (guildId: string, itemId: string) =>
@@ -375,8 +372,7 @@ export const api = {
     }>(`/guilds/${guildId}/economy-leaderboard`, { query: { limit } }),
 
   // Tickets
-  getTicketConfig: (guildId: string) =>
-    call<TicketConfig>(`/guilds/${guildId}/ticket-config`),
+  getTicketConfig: (guildId: string) => call<TicketConfig>(`/guilds/${guildId}/ticket-config`),
   updateTicketConfig: (guildId: string, body: UpdateTicketConfigInput) =>
     call<TicketConfig>(`/guilds/${guildId}/ticket-config`, { method: 'PUT', body }),
   listTicketCategories: (guildId: string) =>
@@ -396,8 +392,7 @@ export const api = {
   listTickets: (
     guildId: string,
     query?: { status?: 'open' | 'closed'; userId?: string; limit?: number },
-  ) =>
-    call<{ tickets: Ticket[] }>(`/guilds/${guildId}/tickets`, query ? { query } : {}),
+  ) => call<{ tickets: Ticket[] }>(`/guilds/${guildId}/tickets`, query ? { query } : {}),
   bumpTicketActivity: (guildId: string, channelId: string) =>
     call<void>(`/guilds/${guildId}/tickets/by-channel/${channelId}/activity`, { method: 'POST' }),
   slaDueTickets: () =>
@@ -406,9 +401,7 @@ export const api = {
     call<void>(`/tickets/${ticketId}/sla-reminder-sent`, { method: 'POST' }),
   idleDueTickets: () =>
     call<{
-      tickets: Array<
-        Ticket & { transcriptsEnabled: boolean; transcriptChannelId: string | null }
-      >;
+      tickets: Array<Ticket & { transcriptsEnabled: boolean; transcriptChannelId: string | null }>;
     }>(`/tickets/idle-due`),
   getTicketStats: (guildId: string) =>
     call<{
@@ -464,8 +457,7 @@ export const api = {
     embedJson?: unknown;
     source?: string;
   }) => call<{ id: string }>(`/posts`, { method: 'POST', body }),
-  deletePost: (postId: string) =>
-    call<void>(`/posts/${postId}`, { method: 'DELETE' }),
+  deletePost: (postId: string) => call<void>(`/posts/${postId}`, { method: 'DELETE' }),
 
   // Twitch
   dueTwitchIntegrations: (limit = 20) =>
@@ -528,8 +520,7 @@ export const api = {
     call<ScheduledAnnouncement>(`/guilds/${guildId}/announcements`, { method: 'POST', body }),
   deleteAnnouncement: (guildId: string, id: string) =>
     call<void>(`/guilds/${guildId}/announcements/${id}`, { method: 'DELETE' }),
-  dueAnnouncements: () =>
-    call<{ announcements: ScheduledAnnouncement[] }>(`/announcements/due`),
+  dueAnnouncements: () => call<{ announcements: ScheduledAnnouncement[] }>(`/announcements/due`),
   advanceAnnouncement: (id: string) =>
     call<unknown>(`/announcements/${id}/advance`, { method: 'POST' }),
 
@@ -577,8 +568,7 @@ export const api = {
     guildId: string,
     eventId: string,
     body: { userId: string; status: 'yes' | 'maybe' | 'no' },
-  ) =>
-    call<GuildEvent>(`/guilds/${guildId}/events/${eventId}/rsvp`, { method: 'POST', body }),
+  ) => call<GuildEvent>(`/guilds/${guildId}/events/${eventId}/rsvp`, { method: 'POST', body }),
 
   // Sticky messages
   listStickyMessages: (guildId: string) =>
@@ -604,10 +594,7 @@ export const api = {
     guildId: string,
     query?: { status?: 'open' | 'accepted' | 'rejected' | 'implemented'; limit?: number },
   ) =>
-    call<{ suggestions: Suggestion[] }>(
-      `/guilds/${guildId}/suggestions`,
-      query ? { query } : {},
-    ),
+    call<{ suggestions: Suggestion[] }>(`/guilds/${guildId}/suggestions`, query ? { query } : {}),
   getSuggestion: (guildId: string, suggestionId: string) =>
     call<Suggestion>(`/guilds/${guildId}/suggestions/${suggestionId}`),
   createSuggestion: (guildId: string, body: CreateSuggestionInput) =>
@@ -619,11 +606,7 @@ export const api = {
       method: 'POST',
       body,
     }),
-  voteSuggestion: (
-    guildId: string,
-    suggestionId: string,
-    body: { userId: string; vote: number },
-  ) =>
+  voteSuggestion: (guildId: string, suggestionId: string, body: { userId: string; vote: number }) =>
     call<Suggestion>(`/guilds/${guildId}/suggestions/${suggestionId}/vote`, {
       method: 'POST',
       body,
@@ -663,4 +646,13 @@ export const api = {
   getTtsConfig: (guildId: string) => call<TtsConfig>(`/guilds/${guildId}/tts-config`),
   upsertTtsConfig: (guildId: string, body: UpsertTtsConfigInput) =>
     call<TtsConfig>(`/guilds/${guildId}/tts-config`, { method: 'PUT', body }),
+
+  // Insights — bot-side bulk increment + (admin-only on the API side) summary
+  getInsights: (guildId: string, days = 30) =>
+    call<InsightsSummary>(`/guilds/${guildId}/insights`, { query: { days } }),
+  postActivityBatch: (guildId: string, body: ActivityEventsBatchInput) =>
+    call<{ ok: boolean }>(`/guilds/${guildId}/activity-events`, {
+      method: 'POST',
+      body,
+    }),
 };

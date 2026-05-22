@@ -12,6 +12,8 @@ import { AttachmentBuilder } from 'discord.js';
 import { fetchFeed } from './integrations/rss.js';
 import { fetchStream } from './integrations/twitch.js';
 import { renderTranscript } from './integrations/ticket-transcript.js';
+import { activityBatcher } from './util/activity-batcher.js';
+import { tickVoiceMinutes } from './events/insights.js';
 
 const REMINDER_TICK_MS = 10_000;
 const POLL_TICK_MS = 30_000;
@@ -23,6 +25,7 @@ const BIRTHDAY_TICK_MS = 5 * 60_000;
 const SLA_TICK_MS = 60_000;
 const IDLE_TICK_MS = 5 * 60_000;
 const VOICE_XP_TICK_MS = 60_000;
+const ACTIVITY_TICK_MS = 60_000;
 
 export function startScheduler(client: Client): void {
   setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
@@ -35,6 +38,14 @@ export function startScheduler(client: Client): void {
   setInterval(() => sweepSlaReminders(client).catch(noop), SLA_TICK_MS);
   setInterval(() => sweepIdleTickets(client).catch(noop), IDLE_TICK_MS);
   setInterval(() => awardActiveVoiceXp(client).catch(noop), VOICE_XP_TICK_MS);
+  setInterval(() => {
+    try {
+      tickVoiceMinutes(client);
+    } catch (err) {
+      log.warn('tickVoiceMinutes error', { err: String(err) });
+    }
+    activityBatcher.flushAll().catch(noop);
+  }, ACTIVITY_TICK_MS);
   setTimeout(() => {
     fireDueReminders(client).catch(noop);
     closeDuePolls(client).catch(noop);
@@ -72,7 +83,10 @@ async function fireDueReminders(client: Client): Promise<void> {
         if (guild) {
           const channel = guild.channels.cache.get(r.channelId);
           if (channel && channel.type === ChannelType.GuildText) {
-            await (channel as TextChannel).send({ content: lines, allowedMentions: { users: [r.userId] } });
+            await (channel as TextChannel).send({
+              content: lines,
+              allowedMentions: { users: [r.userId] },
+            });
             delivered = true;
           }
         }
@@ -270,7 +284,8 @@ async function pollTwitchStreams(): Promise<void> {
   try {
     due = await api.dueTwitchIntegrations();
   } catch (err) {
-    if (err instanceof ApiError) log.warn('dueTwitchIntegrations API error', { status: err.status });
+    if (err instanceof ApiError)
+      log.warn('dueTwitchIntegrations API error', { status: err.status });
     return;
   }
   for (const sub of due.integrations) {
@@ -289,9 +304,7 @@ async function pollTwitchStreams(): Promise<void> {
             { name: 'Viewers', value: String(stream.viewer_count), inline: true },
           ],
           image: {
-            url: stream.thumbnail_url
-              .replace('{width}', '640')
-              .replace('{height}', '360'),
+            url: stream.thumbnail_url.replace('{width}', '640').replace('{height}', '360'),
           },
           timestamp: stream.started_at,
         };
@@ -383,7 +396,9 @@ async function sweepIdleTickets(client: Client): Promise<void> {
           await (target as TextChannel)
             .send({
               content: `📝 Transcript for ticket #${ticket.number}`,
-              files: [new AttachmentBuilder(transcriptBuffer, { name: `ticket-${ticket.number}.html` })],
+              files: [
+                new AttachmentBuilder(transcriptBuffer, { name: `ticket-${ticket.number}.html` }),
+              ],
             })
             .catch(() => {});
         }

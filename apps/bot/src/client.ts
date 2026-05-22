@@ -11,17 +11,18 @@ import { registerMessageActivityEvents } from './events/message-activity.js';
 import { registerTicketActivityEvents } from './events/ticket-activity.js';
 import { registerStickyEvents } from './events/sticky.js';
 import { registerVoiceStateEvents } from './events/voice-state.js';
+import { registerInsightsEvents } from './events/insights.js';
 import { startScheduler } from './scheduler.js';
 
 export function createClient(): Client {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMembers,        // welcome/leave + member updates
-      GatewayIntentBits.GuildModeration,     // moderation audit-log entries
-      GatewayIntentBits.GuildMessages,       // message edit/delete audit
-      GatewayIntentBits.MessageContent,      // captures content for edit/delete logs
-      GatewayIntentBits.GuildVoiceStates,    // voice join/leave audit
+      GatewayIntentBits.GuildMembers, // welcome/leave + member updates
+      GatewayIntentBits.GuildModeration, // moderation audit-log entries
+      GatewayIntentBits.GuildMessages, // message edit/delete audit
+      GatewayIntentBits.MessageContent, // captures content for edit/delete logs
+      GatewayIntentBits.GuildVoiceStates, // voice join/leave audit
     ],
     partials: [Partials.GuildMember, Partials.Message, Partials.Channel],
   });
@@ -38,6 +39,7 @@ export function createClient(): Client {
   registerTicketActivityEvents(client);
   registerStickyEvents(client);
   registerVoiceStateEvents(client);
+  registerInsightsEvents(client);
   startScheduler(client);
 
   return client;

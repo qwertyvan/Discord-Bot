@@ -20,6 +20,7 @@ export * from './custom-command.js';
 export * from './community.js';
 export * from './voice.js';
 export * from './audio.js';
+export * from './insights.js';
 export * from './user.js';
 export * from './errors.js';
 export * from './permissions.js';
