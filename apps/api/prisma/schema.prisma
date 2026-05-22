@@ -51,6 +51,8 @@ model Guild {
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
+  soundboardClips      SoundboardClip[]
+  ttsConfig            TtsConfig?
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -83,6 +85,38 @@ model VoiceSession {
   guild      Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId, userId, leftAt])
+}
+
+// Per-guild soundboard library. Each clip is a named URL pointing to a
+// playable audio source (mp3/ogg/etc.) that the bot streams into a voice
+// channel via `@discordjs/voice` when available.
+model SoundboardClip {
+  id          String   @id @default(uuid())
+  guildId     String
+  name        String   @db.VarChar(64)
+  url         String   @db.VarChar(2048)
+  uploaderId  String?
+  sizeBytes   Int?
+  createdAt   DateTime @default(now())
+
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, name])
+  @@index([guildId])
+}
+
+// Per-guild TTS announcement configuration. Welcome/goodbye text is spoken
+// into `voiceChannelId` using the Google Translate TTS endpoint (no API key
+// required) when `enabled` is true.
+model TtsConfig {
+  guildId        String   @id
+  welcomeText    String?  @db.VarChar(500)
+  goodbyeText    String?  @db.VarChar(500)
+  voiceChannelId String?
+  language       String   @default("en") @db.VarChar(8)
+  enabled        Boolean  @default(false)
+
+  guild          Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every

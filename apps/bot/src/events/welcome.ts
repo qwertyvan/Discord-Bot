@@ -11,6 +11,8 @@ import { log } from '../logger.js';
 import { api, ApiError } from '../api-client.js';
 import { renderTemplate } from '../welcome/template.js';
 import { renderWelcomeCard } from '../util/canvas/welcome-card.js';
+import { ttsUrl } from '../util/tts.js';
+import { connectAndPlay } from '../util/voice-player.js';
 
 export function registerWelcomeEvents(client: Client): void {
   client.on(Events.GuildMemberAdd, async (member) => {
@@ -70,6 +72,26 @@ export function registerWelcomeEvents(client: Client): void {
       await applyAutoRoles(member, config.autoRoleIds);
     }
 
+    // TTS welcome announcement — best-effort; failures must not block the
+    // rest of the join flow. Runs after the welcome card so the channel
+    // message arrives first.
+    try {
+      const tts = await api.getTtsConfig(member.guild.id).catch(() => null);
+      if (tts?.enabled && tts.welcomeText && tts.voiceChannelId) {
+        const rendered = renderTemplate(tts.welcomeText, {
+          user: member.user,
+          member,
+          guild: member.guild,
+        });
+        await connectAndPlay(member.guild, tts.voiceChannelId, ttsUrl(rendered, tts.language));
+      }
+    } catch (err) {
+      log.warn('TTS welcome announcement failed', {
+        guildId: member.guild.id,
+        err: String(err),
+      });
+    }
+
     if (config.milestoneEvery && config.milestoneTemplate && config.channelId) {
       // memberCount has already been incremented at this point.
       if (member.guild.memberCount % config.milestoneEvery === 0) {
@@ -104,6 +126,26 @@ export function registerWelcomeEvents(client: Client): void {
     await channel.send({ content: message, allowedMentions: { parse: [] } }).catch((err) => {
       log.warn('Failed to send leave message', { guildId: member.guild.id, err: String(err) });
     });
+
+    // TTS goodbye — same best-effort pattern as the join hook.
+    try {
+      const tts = await api.getTtsConfig(member.guild.id).catch(() => null);
+      if (tts?.enabled && tts.goodbyeText && tts.voiceChannelId) {
+        const rendered = renderTemplate(tts.goodbyeText, {
+          user: member.user,
+          // member is a PartialGuildMember here — template only reads
+          // `displayName`/etc., so the partial is sufficient.
+          member,
+          guild: member.guild,
+        });
+        await connectAndPlay(member.guild, tts.voiceChannelId, ttsUrl(rendered, tts.language));
+      }
+    } catch (err) {
+      log.warn('TTS goodbye announcement failed', {
+        guildId: member.guild.id,
+        err: String(err),
+      });
+    }
   });
 }
 
