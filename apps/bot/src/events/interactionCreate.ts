@@ -29,6 +29,7 @@ import { dispatchOnCommand } from '../plugins/index.js';
 import { giveawayMessagePayload } from '../util/giveaway-render.js';
 import { applicationMessagePayload } from '../util/application-render.js';
 import { renderBlackjack } from '../commands/economy/blackjack.js';
+import { buildCategoryEmbed, buildCategorySelect } from '../commands/utility/help.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -173,6 +174,10 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId === 'ticket:open:select') {
           await handleTicketOpen(interaction, interaction.values[0] ?? null);
+          return;
+        }
+        if (interaction.customId === 'help:cat') {
+          await handleHelpCategorySelect(interaction);
           return;
         }
       }
@@ -949,4 +954,19 @@ async function handleBlackjackButton(interaction: ButtonInteraction): Promise<vo
       await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
     }
   }
+}
+
+async function handleHelpCategorySelect(interaction: StringSelectMenuInteraction): Promise<void> {
+  const group = interaction.values[0];
+  if (!group) {
+    await interaction.deferUpdate().catch(() => {});
+    return;
+  }
+  // The original /help message is ephemeral and component-driven. update()
+  // edits it in place without producing a follow-up — perfect for a category
+  // browser. We rebuild the select so the picked option shows as the default.
+  await interaction.update({
+    embeds: [buildCategoryEmbed(group)],
+    components: [buildCategorySelect(group)],
+  });
 }
