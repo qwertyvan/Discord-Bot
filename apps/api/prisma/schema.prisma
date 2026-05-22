@@ -41,6 +41,7 @@ model Guild {
   integrationCredentials IntegrationCredential[]
   pendingPosts           PendingPost[]
   adminActions           AdminAction[]
+  feedSubscriptions      FeedSubscription[]
   scheduledAnnouncements ScheduledAnnouncement[]
   birthdayConfig       BirthdayConfig?
   userBirthdays        UserBirthday[]
@@ -842,6 +843,31 @@ model IntegrationCredential {
 
   @@id([guildId, provider, key])
   @@index([guildId, provider])
+}
+
+// Public-feed subscriptions (YouTube uploads, Reddit, Bluesky, Mastodon).
+// Polled by the bot every ~5min; new items are queued via PendingPost.
+// `identifier` is the kind-specific handle: a YouTube channel id
+// ("UCxxxx"), a subreddit name ("typescript"), a Bluesky handle
+// ("alice.bsky.social"), or a Mastodon address ("@user@instance.tld").
+// `lastItemId` tracks the most recently posted item so the next tick
+// can diff incrementally.
+model FeedSubscription {
+  id           String   @id @default(uuid())
+  guildId      String
+  // 'youtube' | 'reddit' | 'bluesky' | 'mastodon'
+  kind         String   @db.VarChar(16)
+  identifier   String   @db.VarChar(200)
+  channelId    String
+  template     String?  @db.VarChar(500)
+  lastItemId   String?
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, kind])
+  @@index([kind, enabled])
 }
 
 // Queue of messages to be posted by the bot. Populated by webhook ingress

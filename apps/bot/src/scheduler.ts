@@ -16,6 +16,8 @@ import { giveawayMessagePayload } from './util/giveaway-render.js';
 import { AttachmentBuilder } from 'discord.js';
 import { fetchFeed } from './integrations/rss.js';
 import { fetchStream } from './integrations/twitch.js';
+import { feedHandlers, FEED_COLORS, type FeedItem } from './integrations/feeds/index.js';
+import type { FeedKind } from '@discord-bot/shared';
 import { renderTranscript } from './integrations/ticket-transcript.js';
 import { activityBatcher } from './util/activity-batcher.js';
 import { tickVoiceMinutes } from './events/insights.js';
@@ -26,6 +28,7 @@ const POLL_TICK_MS = 30_000;
 const POSTS_TICK_MS = 15_000;
 const RSS_TICK_MS = 60_000;
 const TWITCH_TICK_MS = 60_000;
+const FEEDS_TICK_MS = 5 * 60_000;
 const ANNOUNCE_TICK_MS = 30_000;
 const GIVEAWAY_TICK_MS = 30_000;
 const BIRTHDAY_TICK_MS = 5 * 60_000;
@@ -77,6 +80,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('giveaways', () => endDueGiveaways(client))().catch(noop), GIVEAWAY_TICK_MS);
   setInterval(() => tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop), STARBOARD_DIGEST_TICK_MS);
   setInterval(() => tick('counters', () => updateCounterChannels(client))().catch(noop), COUNTERS_TICK_MS);
+  setInterval(() => tick('feeds', () => pollPublicFeeds())().catch(noop), FEEDS_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -95,6 +99,7 @@ export function startScheduler(client: Client): void {
     tick('giveaways', () => endDueGiveaways(client))().catch(noop);
     tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop);
     tick('counters', () => updateCounterChannels(client))().catch(noop);
+    tick('feeds', () => pollPublicFeeds())().catch(noop);
   }, 5_000);
 }
 
@@ -407,6 +412,100 @@ async function pollTwitchStreams(): Promise<void> {
       log.warn('Twitch poll failed', { id: sub.id, err: String(err) });
     }
   }
+}
+
+async function pollPublicFeeds(): Promise<void> {
+  let due;
+  try {
+    due = await api.enabledFeeds({ limit: 200 });
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('enabledFeeds API error', { status: err.status });
+    return;
+  }
+
+  for (const sub of due.feeds) {
+    const kind = sub.kind as FeedKind;
+    const handler = feedHandlers[kind];
+    if (!handler) {
+      log.warn('Unknown feed kind', { id: sub.id, kind: sub.kind });
+      continue;
+    }
+    try {
+      const { newItems, latestId } = await handler({
+        id: sub.id,
+        guildId: sub.guildId,
+        channelId: sub.channelId,
+        identifier: sub.identifier,
+        lastItemId: sub.lastItemId,
+      });
+
+      // First-run: just record the head id so we don't backfill.
+      if (!sub.lastItemId) {
+        if (latestId) {
+          await api
+            .updateFeedLastItem(sub.guildId, sub.id, latestId)
+            .catch((err) => log.warn('feed lastItem update failed', { id: sub.id, err: String(err) }));
+        }
+        continue;
+      }
+
+      if (newItems.length === 0) continue;
+
+      // Post oldest-first so the timeline reads naturally.
+      for (const item of [...newItems].reverse()) {
+        const embed = buildFeedEmbed(kind, sub.identifier, item, sub.template ?? null);
+        await api
+          .createPendingPost({
+            guildId: sub.guildId,
+            channelId: sub.channelId,
+            ...embed,
+            source: `${kind}:${sub.identifier}`,
+          })
+          .catch((err) =>
+            log.warn('queue feed post failed', { id: sub.id, err: String(err) }),
+          );
+      }
+
+      if (latestId) {
+        await api
+          .updateFeedLastItem(sub.guildId, sub.id, latestId)
+          .catch((err) => log.warn('feed lastItem update failed', { id: sub.id, err: String(err) }));
+      }
+    } catch (err) {
+      // Failures per feed must not break the tick.
+      log.warn('Feed poll failed', { id: sub.id, kind: sub.kind, err: String(err) });
+    }
+  }
+}
+
+function buildFeedEmbed(
+  kind: FeedKind,
+  identifier: string,
+  item: FeedItem,
+  template: string | null,
+): { content?: string; embedJson: APIEmbed } {
+  const embed = new EmbedBuilder()
+    .setTitle(item.title.slice(0, 256) || '(no title)')
+    .setColor(FEED_COLORS[kind]);
+  if (item.url) embed.setURL(item.url);
+  if (item.contentSnippet) embed.setDescription(item.contentSnippet.slice(0, 4000));
+  if (item.author) embed.setAuthor({ name: item.author.slice(0, 256) });
+  if (item.publishedAt && !Number.isNaN(item.publishedAt.getTime())) {
+    embed.setTimestamp(item.publishedAt);
+  }
+  embed.setFooter({ text: `${kind} · ${identifier}`.slice(0, 2048) });
+
+  if (template) {
+    const content = template
+      .replaceAll('{title}', item.title)
+      .replaceAll('{url}', item.url)
+      .replaceAll('{author}', item.author ?? identifier)
+      .replaceAll('{identifier}', identifier)
+      .replaceAll('{kind}', kind)
+      .slice(0, 2000);
+    return { content, embedJson: embed.toJSON() };
+  }
+  return { embedJson: embed.toJSON() };
 }
 
 async function sweepSlaReminders(client: Client): Promise<void> {
