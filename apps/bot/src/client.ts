@@ -5,6 +5,7 @@ import { registerGuildLifecycle } from './events/guildLifecycle.js';
 import { registerWelcomeEvents } from './events/welcome.js';
 import { registerAuditEvents } from './events/audit.js';
 import { registerAutomodEvents } from './events/automod.js';
+import { registerLinkSafetyEvents } from './events/link-safety.js';
 import { registerAutoResponseEvents } from './events/auto-response.js';
 import { registerAutoReactionEvents } from './events/auto-reactions.js';
 import { registerLevelingEvents } from './events/leveling.js';
@@ -56,6 +57,7 @@ export function createClient(): Client {
   registerWelcomeEvents(client);
   registerAuditEvents(client);
   registerAutomodEvents(client);
+  registerLinkSafetyEvents(client);
   registerAutoResponseEvents(client);
   registerAutoReactionEvents(client);
   registerLevelingEvents(client);

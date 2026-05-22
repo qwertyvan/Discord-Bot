@@ -98,6 +98,8 @@ model Guild {
   milestoneConfig       MilestoneConfig?
   tenureRoleRules       TenureRoleRule[]
   milestoneAwards       MilestoneAward[]
+  linkSafetyConfig      LinkSafetyConfig?
+  linkDomains           LinkDomain[]
   onboardingForms       OnboardingForm[]
   applications          Application[]
 }
@@ -1798,6 +1800,44 @@ model AutoReactionRule {
   guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId, enabled])
+}
+
+// Per-guild link-safety configuration. Extends automod with a domain
+// allowlist/blocklist, optional shortener expansion, optional Google Safe
+// Browsing reputation lookup, and a configurable action to take when a
+// posted URL fails the policy.
+model LinkSafetyConfig {
+  guildId          String   @id
+  enabled          Boolean  @default(false)
+  // 'allowlist' | 'blocklist'
+  mode             String   @default("blocklist") @db.VarChar(16)
+  // 'none' | 'delete' | 'warn' | 'mute' | 'kick'
+  action           String   @default("delete") @db.VarChar(16)
+  muteMinutes      Int      @default(10)
+  notifyChannelId  String?
+  expandShorteners Boolean  @default(true)
+  gsbCheck         Boolean  @default(false)
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Per-guild allow- or block-listed domain. The bot's link-safety scanner
+// looks up the final domain of every URL in a message (after optional
+// shortener expansion) against the matching list.
+model LinkDomain {
+  id      String   @id @default(uuid())
+  guildId String
+  domain  String   @db.VarChar(255)
+  // 'allow' | 'block'
+  kind    String   @db.VarChar(16)
+  addedBy String
+  addedAt DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, domain, kind])
+  @@index([guildId, kind])
 }
 
 // Per-guild data-retention policy. Each *Days field, when set, bounds the
