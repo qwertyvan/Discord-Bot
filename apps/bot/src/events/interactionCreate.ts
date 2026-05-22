@@ -28,6 +28,7 @@ import { hangmanMessagePayload } from '../commands/minigames/hangman.js';
 import { dispatchOnCommand } from '../plugins/index.js';
 import { giveawayMessagePayload } from '../util/giveaway-render.js';
 import { applicationMessagePayload } from '../util/application-render.js';
+import { renderBlackjack } from '../commands/economy/blackjack.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -154,6 +155,13 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('apply:reject:')) {
           await handleApplicationReject(interaction);
+          return;
+        }
+        if (
+          interaction.customId.startsWith('bj:hit:') ||
+          interaction.customId.startsWith('bj:stand:')
+        ) {
+          await handleBlackjackButton(interaction);
           return;
         }
       }
@@ -903,5 +911,42 @@ async function handleApplyRejectModal(interaction: ModalSubmitInteraction): Prom
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Failed to reject.';
     await interaction.editReply(msg);
+  }
+}
+
+// Blackjack hit / stand buttons. customId format: `bj:<action>:<gameId>`.
+// We re-render the same embed each click; once the round resolves the
+// components are stripped so further clicks are no-ops.
+async function handleBlackjackButton(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const [, action, gameId] = interaction.customId.split(':');
+  if (!gameId || (action !== 'hit' && action !== 'stand')) return;
+
+  // Only the player who started the round can act on it. Hot-button hijacks
+  // would let third parties drain another user's bet.
+  const originalUserId = interaction.message.interaction?.user.id;
+  if (originalUserId && originalUserId !== interaction.user.id) {
+    await interaction.reply({
+      content: 'Only the player who started this hand can hit or stand.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    const cfg = await api.getEconomyConfig(interaction.guildId);
+    const { state } =
+      action === 'hit'
+        ? await api.blackjackHit(interaction.guildId, gameId)
+        : await api.blackjackStand(interaction.guildId, gameId);
+    const { embed, components } = renderBlackjack(state, cfg.currencySymbol);
+    await interaction.update({ embeds: [embed], components });
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Action failed.';
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral });
+    } else {
+      await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+    }
   }
 }

@@ -40,13 +40,18 @@ function serializeBalance(b: Balance | null, guildId: string, userId: string) {
 }
 
 function serializeShopItem(s: ShopItem) {
+  // Existing /shop callers still want the legacy kind union; we narrow the new
+  // expanded set down on the wire so old clients keep type-checking. The new
+  // shop endpoints (/shop-items) return the full kind set.
+  const legacyKind: 'virtual' | 'role' =
+    s.kind === 'role' ? 'role' : 'virtual';
   return {
     id: s.id,
     guildId: s.guildId,
     name: s.name,
     description: s.description,
     price: s.price,
-    kind: s.kind as 'virtual' | 'role',
+    kind: legacyKind,
     roleId: s.roleId,
     stock: s.stock,
     createdAt: s.createdAt.toISOString(),
@@ -55,12 +60,14 @@ function serializeShopItem(s: ShopItem) {
 
 function serializeInventory(entry: InventoryEntry & { item: ShopItem | null }) {
   return {
-    id: entry.id,
+    // The composite-keyed InventoryEntry no longer has its own id; we expose a
+    // stable derived "id" so existing clients keep working.
+    id: `${entry.guildId}:${entry.userId}:${entry.itemId}`,
     guildId: entry.guildId,
     userId: entry.userId,
     itemId: entry.itemId,
     quantity: entry.quantity,
-    createdAt: entry.createdAt.toISOString(),
+    createdAt: entry.acquiredAt.toISOString(),
     item: entry.item ? serializeShopItem(entry.item) : undefined,
   };
 }
@@ -340,9 +347,23 @@ export const economyRoutes: FastifyPluginAsyncZod = async (app) => {
       const { guildId } = req.params;
       const guild = await app.prisma.guild.findUnique({ where: { id: guildId } });
       if (!guild) throw HttpError.notFound('Guild not registered.');
+      // Derive a slug from the name; the new shop-items endpoint accepts an
+      // explicit slug, but the legacy endpoint only takes a name.
+      const slugBase =
+        req.body.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 48) || `item-${Date.now().toString(36)}`;
+      let slug = slugBase;
+      let i = 1;
+      while (await app.prisma.shopItem.findUnique({ where: { guildId_slug: { guildId, slug } } })) {
+        slug = `${slugBase}-${i++}`.slice(0, 48);
+      }
       const item = await app.prisma.shopItem.create({
         data: {
           guildId,
+          slug,
           name: req.body.name,
           description: req.body.description ?? null,
           price: req.body.price,
@@ -392,8 +413,12 @@ export const economyRoutes: FastifyPluginAsyncZod = async (app) => {
           where: { guildId_userId: { guildId, userId } },
           data: { amount: { decrement: item.price } },
         }),
-        app.prisma.inventoryEntry.create({
-          data: { guildId, userId, itemId },
+        app.prisma.inventoryEntry.upsert({
+          where: {
+            guildId_userId_itemId: { guildId, userId, itemId },
+          },
+          create: { guildId, userId, itemId, quantity: 1 },
+          update: { quantity: { increment: 1 } },
           include: { item: true },
         }),
       ]);
@@ -414,7 +439,7 @@ export const economyRoutes: FastifyPluginAsyncZod = async (app) => {
       const entries = await app.prisma.inventoryEntry.findMany({
         where: { guildId, userId },
         include: { item: true },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { acquiredAt: 'desc' },
       });
       return { entries: entries.map(serializeInventory) };
     },

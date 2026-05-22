@@ -101,6 +101,8 @@ model Guild {
   milestoneConfig       MilestoneConfig?
   tenureRoleRules       TenureRoleRule[]
   milestoneAwards       MilestoneAward[]
+  lootDropsExt          LootDrop[]
+  lootClaims            LootClaim[]
   linkSafetyConfig      LinkSafetyConfig?
   linkDomains           LinkDomain[]
   onboardingForms       OnboardingForm[]
@@ -1308,35 +1310,80 @@ model Balance {
 model ShopItem {
   id          String   @id @default(uuid())
   guildId     String
-  name        String   @db.VarChar(64)
-  description String?  @db.VarChar(300)
+  // Stable per-guild identifier used for command autocompletion and lookup.
+  slug        String   @db.VarChar(48)
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  // Item cost in the guild's currency (uses Int to stay consistent with
+  // Balance.amount; the field is named priceCents for compatibility with the
+  // shared schema even though the unit is the guild's currency).
   price       Int
-  // 'role' grants a Discord role; 'virtual' is a flavor-text item.
-  kind        String   @default("virtual") @db.VarChar(16)
+  // 'consumable' | 'role' | 'badge' | 'cosmetic'. Legacy 'virtual' rows still
+  // resolve as consumable-equivalent.
+  kind        String   @default("consumable") @db.VarChar(16)
   roleId      String?
+  // Optional flavour message shown on /use for consumable-type items.
+  message     String?  @db.VarChar(2000)
   // null = unlimited stock.
   stock       Int?
+  enabled     Boolean  @default(true)
   createdAt   DateTime @default(now())
 
   guild     Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
   inventory InventoryEntry[]
+  lootDrops LootDrop[]
 
+  @@unique([guildId, slug])
   @@unique([guildId, name])
   @@index([guildId])
+  @@index([guildId, enabled])
 }
 
 model InventoryEntry {
-  id        String   @id @default(uuid())
-  guildId   String
-  userId    String
-  itemId    String
-  quantity  Int      @default(1)
-  createdAt DateTime @default(now())
+  guildId     String
+  userId      String
+  itemId      String
+  quantity    Int      @default(1)
+  acquiredAt  DateTime @default(now())
 
   guild Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
   item  ShopItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
+  @@id([guildId, userId, itemId])
   @@index([guildId, userId])
+}
+
+// Configurable per-guild crate table. Each row is one possible drop. The
+// /loot command performs a weighted random pick across enabled rows.
+// A drop yields either an item (itemId) or a currency reward (a random
+// integer in [currencyMin, currencyMax]); both may be set, in which case
+// both are awarded.
+model LootDrop {
+  id           String  @id @default(uuid())
+  guildId      String
+  slug         String  @db.VarChar(48)
+  itemId       String?
+  currencyMin  Int     @default(0)
+  currencyMax  Int     @default(0)
+  weight       Int     @default(1)
+
+  guild Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  item  ShopItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@unique([guildId, slug])
+  @@index([guildId])
+}
+
+// Cooldown / streak tracking for the /loot daily crate.
+model LootClaim {
+  guildId      String
+  userId       String
+  lastClaimAt  DateTime?
+  streak       Int       @default(0)
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
 }
 
 model LevelConfig {
