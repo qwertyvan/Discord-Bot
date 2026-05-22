@@ -48,6 +48,7 @@ model Guild {
   customCommands       CustomCommand[]
   stickyMessages       StickyMessage[]
   suggestions          Suggestion[]
+  giveaways            Giveaway[]
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
@@ -539,6 +540,55 @@ model SuggestionVote {
   suggestion Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
 
   @@id([suggestionId, userId])
+}
+
+// Timed giveaways. Members enter via the embed's single "Enter" button; on
+// `endsAt` the scheduler asks the API to draw `winnerCount` winners weighted
+// by `weight` (number of `weightedBonusRoles` the user holds + 1). Status:
+// 'active' | 'ended' | 'cancelled'.
+model Giveaway {
+  id                   String   @id @default(uuid())
+  guildId              String
+  channelId            String
+  messageId            String?
+  prize                String   @db.VarChar(200)
+  hostId               String
+  endsAt               DateTime
+  winnerCount          Int      @default(1)
+  requireRoleId        String?
+  requireMinLevel      Int?
+  weightedBonusRoles   String[] @default([])
+  status               String   @default("active") @db.VarChar(16)
+  createdAt            DateTime @default(now())
+
+  guild                Guild              @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  entries              GiveawayEntry[]
+  winners              GiveawayWinner[]
+
+  @@index([guildId, status])
+  @@index([status, endsAt])
+}
+
+model GiveawayEntry {
+  giveawayId  String
+  userId      String
+  weight      Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  giveaway    Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  @@id([giveawayId, userId])
+}
+
+model GiveawayWinner {
+  id          String   @id @default(uuid())
+  giveawayId  String
+  userId      String
+  drawAt      DateTime @default(now())
+
+  giveaway    Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  @@index([giveawayId])
 }
 
 model ScheduledAnnouncement {

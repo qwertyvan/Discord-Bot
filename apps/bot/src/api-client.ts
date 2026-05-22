@@ -113,6 +113,10 @@ import type {
   MusicQueue,
   MusicTrack,
   SetQueueStateInput,
+  Giveaway,
+  CreateGiveawayInput,
+  EnterGiveawayInput,
+  GiveawayStatus,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -937,4 +941,32 @@ export const api = {
     }),
   clearQueue: (guildId: string) =>
     call<MusicQueue>(`/guilds/${guildId}/music/tracks`, { method: 'DELETE' }),
+  // Giveaways
+  listGiveaways: (guildId: string, query?: { status?: GiveawayStatus; limit?: number }) =>
+    call<{ giveaways: Giveaway[] }>(
+      `/guilds/${guildId}/giveaways`,
+      query ? { query } : {},
+    ),
+  getGiveaway: (guildId: string, giveawayId: string) =>
+    call<Giveaway>(`/guilds/${guildId}/giveaways/${giveawayId}`),
+  createGiveaway: (guildId: string, body: CreateGiveawayInput) =>
+    call<Giveaway>(`/guilds/${guildId}/giveaways`, { method: 'POST', body }),
+  setGiveawayMessageId: (guildId: string, giveawayId: string, messageId: string | null) =>
+    call<Giveaway>(`/guilds/${guildId}/giveaways/${giveawayId}/messageId`, {
+      method: 'POST',
+      body: { messageId },
+    }),
+  enterGiveaway: (guildId: string, giveawayId: string, body: EnterGiveawayInput) =>
+    call<Giveaway>(`/guilds/${guildId}/giveaways/${giveawayId}/enter`, {
+      method: 'POST',
+      body,
+    }),
+  endGiveaway: (guildId: string, giveawayId: string) =>
+    call<Giveaway>(`/guilds/${guildId}/giveaways/${giveawayId}/end`, { method: 'POST' }),
+  rerollGiveaway: (guildId: string, giveawayId: string) =>
+    call<Giveaway>(`/guilds/${guildId}/giveaways/${giveawayId}/reroll`, { method: 'POST' }),
+  cancelGiveaway: (guildId: string, giveawayId: string) =>
+    call<Giveaway>(`/guilds/${guildId}/giveaways/${giveawayId}/cancel`, { method: 'POST' }),
+  dueGiveaways: (limit = 50) =>
+    call<{ giveaways: Giveaway[] }>(`/giveaways/due`, { query: { limit } }),
 };
