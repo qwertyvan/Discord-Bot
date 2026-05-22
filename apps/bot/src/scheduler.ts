@@ -24,6 +24,7 @@ import { renderTranscript } from './integrations/ticket-transcript.js';
 import { activityBatcher } from './util/activity-batcher.js';
 import { tickVoiceMinutes } from './events/insights.js';
 import { sweepStarboardDigest, STARBOARD_DIGEST_TICK_MS } from './util/starboard-digest.js';
+import { clearLockdown, listActiveLockdowns } from './util/anti-raid-state.js';
 
 const REMINDER_TICK_MS = 10_000;
 const POLL_TICK_MS = 30_000;
@@ -85,6 +86,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('feeds', () => pollPublicFeeds())().catch(noop), FEEDS_TICK_MS);
   setInterval(() => tick('stale-threads', () => sweepStaleThreads(client))().catch(noop), STALE_THREAD_TICK_MS);
   setInterval(() => tick('stage-events', () => tickStageEvents(client))().catch(noop), STAGE_TICK_MS);
+  setInterval(() => tick('anti-raid', () => sweepAntiRaid(client))().catch(noop), ANTI_RAID_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -106,8 +108,11 @@ export function startScheduler(client: Client): void {
     tick('feeds', () => pollPublicFeeds())().catch(noop);
     tick('stale-threads', () => sweepStaleThreads(client))().catch(noop);
     tick('stage-events', () => tickStageEvents(client))().catch(noop);
+    tick('anti-raid', () => sweepAntiRaid(client))().catch(noop);
   }, 5_000);
 }
+
+const ANTI_RAID_TICK_MS = 60_000;
 
 const STALE_THREAD_TICK_MS = 60 * 60_000;
 const STAGE_TICK_MS = 60_000;
@@ -1105,5 +1110,57 @@ async function tickStageEvents(client: Client): Promise<void> {
         log.warn('Stage event end failed', { eventId: ev.id, err: String(err) });
       }
     }
+  }
+}
+
+/**
+ * Expires in-memory lockdowns and any pending captcha challenges whose
+ * deadlines have passed. Called once a minute.
+ */
+async function sweepAntiRaid(client: Client): Promise<void> {
+  // ── Expire lockdowns ──
+  const now = Date.now();
+  for (const active of listActiveLockdowns()) {
+    if (active.expiresAt > now) continue;
+    try {
+      await api.endLockdown(active.guildId, active.id, active.blocked);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        log.warn('endLockdown API error', { id: active.id, status: err.status });
+      }
+    }
+    clearLockdown(active.guildId);
+    log.info('anti-raid: lockdown expired', {
+      guildId: active.guildId,
+      id: active.id,
+      blocked: active.blocked,
+    });
+  }
+
+  // ── Expire pending captcha challenges ──
+  let expired;
+  try {
+    expired = await api.expiredPendingVerifications();
+  } catch (err) {
+    if (err instanceof ApiError && err.status !== 404) {
+      log.warn('expiredPendingVerifications API error', { status: err.status });
+    }
+    return;
+  }
+  for (const p of expired.pending) {
+    try {
+      const user = await client.users.fetch(p.userId).catch(() => null);
+      if (user) {
+        await user
+          .send({
+            content:
+              '⌛ Your verification captcha expired. Re-join the server or ask a moderator to re-issue a new challenge.',
+          })
+          .catch(() => {});
+      }
+    } catch (err) {
+      log.warn('anti-raid: expiry DM failed', { userId: p.userId, err: String(err) });
+    }
+    await api.deletePendingVerification(p.guildId, p.userId).catch(() => {});
   }
 }

@@ -67,6 +67,9 @@ model Guild {
   memberActivity        MemberActivity[]
   activityRoleRules     ActivityRoleRule[]
   inactivityPrunePolicy InactivityPrunePolicy?
+  antiRaidConfig        AntiRaidConfig?
+  lockdownEvents        LockdownEvent[]
+  pendingVerifications  PendingVerification[]
   triviaQuestions       TriviaQuestion[]
   triviaScores          TriviaScore[]
   hangmanGames          HangmanGame[]
@@ -228,6 +231,27 @@ model InactivityPrunePolicy {
   excludeRoleIds String[] @default([])
   notifyDm       Boolean  @default(true)
   updatedAt      DateTime @default(now()) @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Anti-raid + captcha configuration for a guild. The bot tracks join velocity
+// in memory and, when joinsPerMinute > joinsPerMinuteThreshold, opens a
+// LockdownEvent. While a lockdown is active, subsequent joiners are kicked
+// (or quarantined under unverifiedRoleId if captchaRequired is on and
+// available). When captchaRequired is on, every join generates a
+// PendingVerification challenge (math or image) that the user must solve via
+// /verify before the verified role is granted.
+model AntiRaidConfig {
+  guildId                 String   @id
+  enabled                 Boolean  @default(false)
+  joinsPerMinuteThreshold Int      @default(8)
+  lockdownDurationMin     Int      @default(30)
+  captchaRequired         Boolean  @default(false)
+  captchaKind             String   @default("math") @db.VarChar(16)
+  riskScoreThreshold      Int      @default(50)
+  unverifiedRoleId        String?
+  updatedAt               DateTime @default(now()) @updatedAt
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
@@ -584,6 +608,40 @@ model StageScheduledEvent {
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId, status, scheduledFor])
+}
+
+// One row per lockdown window. `endedAt` null = active. `trigger` is a short
+// human-readable label ("auto: 12 joins/min", "manual: by Alice"). `joinsBlocked`
+// is bumped by the bot each time it kicks a joiner during the lockdown.
+model LockdownEvent {
+  id           String    @id @default(uuid())
+  guildId      String
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  trigger      String    @db.VarChar(64)
+  joinsBlocked Int       @default(0)
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, startedAt])
+}
+
+// A captcha challenge issued to a joining user. The bot DMs the challenge,
+// the user replies via /verify <answer>. Expired rows are reaped by the
+// scheduler.
+model PendingVerification {
+  guildId       String
+  userId        String
+  challengeKind String   @db.VarChar(16)
+  challenge     String   @db.VarChar(200)
+  answer        String   @db.VarChar(64)
+  attemptsLeft  Int      @default(3)
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every

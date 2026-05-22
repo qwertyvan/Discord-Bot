@@ -31,6 +31,7 @@ export * from './giveaways.js';
 export * from './starboard.js';
 export * from './counters.js';
 export * from './forum-stage.js';
+export * from './anti-raid.js';
 export * from './user.js';
 export * from './errors.js';
 export * from './permissions.js';
