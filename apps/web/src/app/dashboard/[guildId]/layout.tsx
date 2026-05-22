@@ -26,6 +26,7 @@ export default async function GuildLayout({
   const tabs = [
     { href: base, label: 'Overview' },
     { href: `${base}/stats`, label: 'Stats' },
+    { href: `${base}/insights`, label: 'Insights' },
     { href: `${base}/mod-log`, label: 'Mod log' },
     { href: `${base}/audit-log`, label: 'Audit log' },
     { href: `${base}/automod`, label: 'Automod' },

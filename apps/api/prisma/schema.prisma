@@ -53,6 +53,8 @@ model Guild {
   voiceSessions        VoiceSession[]
   soundboardClips      SoundboardClip[]
   ttsConfig            TtsConfig?
+  activitySnapshots    ActivitySnapshot[]
+  channelDailyActivity ChannelDailyActivity[]
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -117,6 +119,37 @@ model TtsConfig {
   enabled        Boolean  @default(false)
 
   guild          Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Per-guild daily aggregate of join/leave/message/voice activity. The bot
+// keeps an in-memory tally and flushes deltas to the API roughly every 60s.
+// One row per (guildId, day-in-UTC).
+model ActivitySnapshot {
+  guildId       String
+  day           DateTime @db.Date
+  joins         Int      @default(0)
+  leaves        Int      @default(0)
+  messages      Int      @default(0)
+  voiceMinutes  Int      @default(0)
+
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, day])
+  @@index([guildId])
+}
+
+// Per-(guild, channel, day) message counter feeding the "top channels"
+// section of the insights dashboard. Flushed alongside ActivitySnapshot.
+model ChannelDailyActivity {
+  guildId   String
+  channelId String
+  day       DateTime @db.Date
+  messages  Int      @default(0)
+
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, channelId, day])
+  @@index([guildId])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every
