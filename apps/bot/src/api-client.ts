@@ -147,6 +147,10 @@ import type {
   CreateReportInput,
   ReportAction,
   ReportStatus,
+  ServerTemplate,
+  CreateTemplateInput,
+  TemplateDiff,
+  TemplatePayload,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1166,4 +1170,29 @@ export const api = {
       method: 'POST',
       body,
     }),
+  // Server templates
+  listTemplates: (guildId: string) =>
+    call<{ templates: ServerTemplate[] }>(`/guilds/${guildId}/templates`),
+  listPublicTemplates: (limit = 50) =>
+    call<{ templates: ServerTemplate[] }>(`/templates/public`, { query: { limit } }),
+  getTemplate: (id: string, guildId?: string) =>
+    call<ServerTemplate>(
+      `/templates/${id}`,
+      guildId ? { query: { guildId } } : {},
+    ),
+  captureTemplate: (guildId: string, body: CreateTemplateInput) =>
+    call<ServerTemplate>(`/guilds/${guildId}/templates/capture`, {
+      method: 'POST',
+      body,
+    }),
+  shareTemplate: (id: string) =>
+    call<ServerTemplate>(`/templates/${id}/share`, { method: 'POST' }),
+  diffTemplate: (id: string, targetGuildId: string, body: TemplatePayload) =>
+    call<TemplateDiff>(`/templates/${id}/diff`, {
+      method: 'POST',
+      body,
+      query: { targetGuildId },
+    }),
+  deleteTemplate: (id: string) =>
+    call<void>(`/templates/${id}`, { method: 'DELETE' }),
 };

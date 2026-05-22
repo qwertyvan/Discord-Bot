@@ -33,6 +33,7 @@ export * from './counters.js';
 export * from './forum-stage.js';
 export * from './anti-raid.js';
 export * from './reports.js';
+export * from './templates.js';
 export * from './user.js';
 export * from './errors.js';
 export * from './permissions.js';
