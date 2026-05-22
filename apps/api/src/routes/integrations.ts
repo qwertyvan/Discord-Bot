@@ -8,6 +8,7 @@ import {
   UpdateIntegrationSchema,
 } from '@discord-bot/shared';
 import { HttpError } from '../errors.js';
+import { incCounter } from '../util/metrics.js';
 
 const GuildParams = z.object({ guildId: SnowflakeSchema });
 const ItemParams = z.object({ guildId: SnowflakeSchema, integrationId: z.string().uuid() });
@@ -345,7 +346,10 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
       schema: { params: z.object({ postId: z.string().uuid() }) },
     },
     async (req, reply) => {
-      await app.prisma.pendingPost.deleteMany({ where: { id: req.params.postId } });
+      const { count } = await app.prisma.pendingPost.deleteMany({
+        where: { id: req.params.postId },
+      });
+      if (count > 0) incCounter('pending_posts_drained_total');
       return reply.code(204).send();
     },
   );
@@ -362,74 +366,92 @@ export const integrationsRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req, reply) => {
-      const sub = await app.prisma.integrationSubscription.findUnique({
-        where: { token: req.params.token },
-      });
-      if (!sub || !sub.enabled || sub.kind !== 'webhook') {
-        throw HttpError.notFound('Webhook not found.');
-      }
+      try {
+        const sub = await app.prisma.integrationSubscription.findUnique({
+          where: { token: req.params.token },
+        });
+        if (!sub || !sub.enabled || sub.kind !== 'webhook') {
+          incCounter('webhook_deliveries_total', { status: 'fail' });
+          throw HttpError.notFound('Webhook not found.');
+        }
 
-      // GitHub-specific path: detect by X-GitHub-Event and render via the
-      // GitHub payload parser. GitHub signs the raw body, not the parsed
-      // JSON; for v0.15 we rely on the URL token as the credential and
-      // accept payloads without HMAC verification here.
-      const githubEvent = req.headers['x-github-event'];
-      if (typeof githubEvent === 'string') {
-        const { renderGitHubEvent } = await import('../services/github-webhook.js');
-        const embed = renderGitHubEvent(githubEvent, req.body);
-        if (!embed) return reply.code(202).send({ accepted: true, skipped: true });
+        // GitHub-specific path: detect by X-GitHub-Event and render via the
+        // GitHub payload parser. GitHub signs the raw body, not the parsed
+        // JSON; for v0.15 we rely on the URL token as the credential and
+        // accept payloads without HMAC verification here.
+        const githubEvent = req.headers['x-github-event'];
+        if (typeof githubEvent === 'string') {
+          const { renderGitHubEvent } = await import('../services/github-webhook.js');
+          const embed = renderGitHubEvent(githubEvent, req.body);
+          if (!embed) {
+            incCounter('webhook_deliveries_total', { status: 'ok' });
+            return reply.code(202).send({ accepted: true, skipped: true });
+          }
+          await app.prisma.pendingPost.create({
+            data: {
+              guildId: sub.guildId,
+              channelId: sub.channelId,
+              content: null,
+              embedJson: embed as unknown as Prisma.InputJsonValue,
+              source: `github:${githubEvent}`,
+            },
+          });
+          incCounter('webhook_deliveries_total', { status: 'ok' });
+          return reply.code(202).send({ accepted: true });
+        }
+
+        // Generic JSON payload path with optional shared-secret HMAC.
+        if (sub.secret) {
+          const signature = req.headers['x-signature-256'];
+          if (typeof signature !== 'string') {
+            incCounter('webhook_deliveries_total', { status: 'fail' });
+            throw HttpError.unauthorized('Missing X-Signature-256 header.');
+          }
+          const expected =
+            'sha256=' +
+            createHmac('sha256', sub.secret).update(JSON.stringify(req.body ?? {})).digest('hex');
+          const a = Buffer.from(signature);
+          const b = Buffer.from(expected);
+          if (a.length !== b.length || !timingSafeEqual(a, b)) {
+            incCounter('webhook_deliveries_total', { status: 'fail' });
+            throw HttpError.unauthorized('Bad signature.');
+          }
+        }
+
+        const body = (req.body ?? {}) as {
+          content?: string;
+          embed?: Record<string, unknown>;
+          message?: string;
+          title?: string;
+          text?: string;
+        };
+        const content =
+          body.content ?? body.message ?? body.text ?? (body.title ? `**${body.title}**` : null);
+        if (!content && !body.embed) {
+          incCounter('webhook_deliveries_total', { status: 'fail' });
+          throw HttpError.badRequest('Payload must include content, message, text, title, or embed.');
+        }
+
         await app.prisma.pendingPost.create({
           data: {
             guildId: sub.guildId,
             channelId: sub.channelId,
-            content: null,
-            embedJson: embed as unknown as Prisma.InputJsonValue,
-            source: `github:${githubEvent}`,
+            content,
+            embedJson: (body.embed ?? null) as Prisma.InputJsonValue,
+            source: sub.name,
           },
         });
+
+        incCounter('webhook_deliveries_total', { status: 'ok' });
         return reply.code(202).send({ accepted: true });
-      }
-
-      // Generic JSON payload path with optional shared-secret HMAC.
-      if (sub.secret) {
-        const signature = req.headers['x-signature-256'];
-        if (typeof signature !== 'string') {
-          throw HttpError.unauthorized('Missing X-Signature-256 header.');
+      } catch (err) {
+        // Counters for HttpError paths are already incremented above; only
+        // catch unanticipated errors here so we don't double-count.
+        if (!(err instanceof HttpError)) {
+          incCounter('webhook_deliveries_total', { status: 'fail' });
         }
-        const expected =
-          'sha256=' +
-          createHmac('sha256', sub.secret).update(JSON.stringify(req.body ?? {})).digest('hex');
-        const a = Buffer.from(signature);
-        const b = Buffer.from(expected);
-        if (a.length !== b.length || !timingSafeEqual(a, b)) {
-          throw HttpError.unauthorized('Bad signature.');
-        }
+        throw err;
       }
-
-      const body = (req.body ?? {}) as {
-        content?: string;
-        embed?: Record<string, unknown>;
-        message?: string;
-        title?: string;
-        text?: string;
-      };
-      const content =
-        body.content ?? body.message ?? body.text ?? (body.title ? `**${body.title}**` : null);
-      if (!content && !body.embed) {
-        throw HttpError.badRequest('Payload must include content, message, text, title, or embed.');
-      }
-
-      await app.prisma.pendingPost.create({
-        data: {
-          guildId: sub.guildId,
-          channelId: sub.channelId,
-          content,
-          embedJson: (body.embed ?? null) as Prisma.InputJsonValue,
-          source: sub.name,
-        },
-      });
-
-      return reply.code(202).send({ accepted: true });
     },
   );
 };

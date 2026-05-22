@@ -18,6 +18,9 @@ import rateLimitPlugin from './plugins/rate-limit.js';
 import adminAuditPlugin from './plugins/admin-audit.js';
 import publicTokenAuthPlugin from './plugins/public-token-auth.js';
 import { healthRoutes } from './routes/health.js';
+import { metricsRoutes } from './routes/metrics.js';
+import { heartbeatRoutes } from './routes/heartbeat.js';
+import { buildLokiStream } from './util/loki.js';
 import { guildsRoutes } from './routes/guilds.js';
 import { modActionsRoutes } from './routes/mod-actions.js';
 import { modNotesRoutes } from './routes/mod-notes.js';
@@ -56,17 +59,25 @@ import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
 import { HttpError } from './errors.js';
 
 export async function buildApp() {
-  const loggerOptions: FastifyServerOptions['logger'] = {
-    level: process.env.LOG_LEVEL ?? 'info',
-    ...(process.env.NODE_ENV === 'development'
-      ? {
-          transport: {
-            target: 'pino-pretty',
-            options: { translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname' },
-          },
+  const lokiStream = buildLokiStream();
+  // When Loki is configured we hand pino our own write stream (which both
+  // forwards to stdout and buffers for batched POSTs); pino-pretty would
+  // intercept the stream so we skip it in this mode.
+  const loggerOptions = (
+    lokiStream
+      ? { level: process.env.LOG_LEVEL ?? 'info', stream: lokiStream }
+      : {
+          level: process.env.LOG_LEVEL ?? 'info',
+          ...(process.env.NODE_ENV === 'development'
+            ? {
+                transport: {
+                  target: 'pino-pretty',
+                  options: { translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname' },
+                },
+              }
+            : {}),
         }
-      : {}),
-  };
+  ) as NonNullable<FastifyServerOptions['logger']>;
 
   const app = Fastify({ logger: loggerOptions }).withTypeProvider<ZodTypeProvider>();
 
@@ -87,7 +98,9 @@ export async function buildApp() {
   await app.register(adminAuditPlugin);
   await app.register(publicTokenAuthPlugin);
 
+  await app.register(metricsRoutes);
   await app.register(healthRoutes);
+  await app.register(heartbeatRoutes);
   await app.register(guildsRoutes);
   await app.register(modActionsRoutes);
   await app.register(modNotesRoutes);
