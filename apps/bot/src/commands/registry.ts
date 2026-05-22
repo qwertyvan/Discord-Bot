@@ -8,6 +8,7 @@ import { ticketCommands } from './tickets/index.js';
 import { scheduledCommands } from './scheduled/index.js';
 import { communityCommands } from './community/index.js';
 import { starboardCommands } from './starboard/index.js';
+import { forumStageCommands } from './forum-stage/index.js';
 import { utilityCommands } from './utility/index.js';
 import { funCommands } from './fun/index.js';
 import { voiceCommands } from './voice/index.js';
@@ -44,6 +45,7 @@ export function getCommandRegistry(): CommandRegistry {
     scheduled: scheduledCommands,
     community: communityCommands,
     starboard: starboardCommands,
+    'forum-stage': forumStageCommands,
     utility: utilityCommands,
     fun: funCommands,
     voice: voiceCommands,

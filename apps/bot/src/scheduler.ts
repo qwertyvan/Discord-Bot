@@ -7,6 +7,8 @@ import {
   type Guild,
   type GuildMember,
   type GuildBasedChannel,
+  type ForumChannel,
+  type StageChannel,
   type TextChannel,
 } from 'discord.js';
 import { api, ApiError } from './api-client.js';
@@ -81,6 +83,8 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop), STARBOARD_DIGEST_TICK_MS);
   setInterval(() => tick('counters', () => updateCounterChannels(client))().catch(noop), COUNTERS_TICK_MS);
   setInterval(() => tick('feeds', () => pollPublicFeeds())().catch(noop), FEEDS_TICK_MS);
+  setInterval(() => tick('stale-threads', () => sweepStaleThreads(client))().catch(noop), STALE_THREAD_TICK_MS);
+  setInterval(() => tick('stage-events', () => tickStageEvents(client))().catch(noop), STAGE_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -100,8 +104,13 @@ export function startScheduler(client: Client): void {
     tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop);
     tick('counters', () => updateCounterChannels(client))().catch(noop);
     tick('feeds', () => pollPublicFeeds())().catch(noop);
+    tick('stale-threads', () => sweepStaleThreads(client))().catch(noop);
+    tick('stage-events', () => tickStageEvents(client))().catch(noop);
   }, 5_000);
 }
+
+const STALE_THREAD_TICK_MS = 60 * 60_000;
+const STAGE_TICK_MS = 60_000;
 
 // Discord rate-limits channel renames at 2 per 10 minutes — anything more
 // frequent than 5 minutes per channel risks hitting the 429 cap.
@@ -874,6 +883,64 @@ async function updateCounterChannels(client: Client): Promise<void> {
 }
 
 /**
+ * Walk every guild the bot is in; for guilds whose stale-thread policy is
+ * enabled, scan every forum channel and archive/lock active threads whose
+ * lastMessage is older than `idleHours`.
+ */
+async function sweepStaleThreads(client: Client): Promise<void> {
+  for (const guild of client.guilds.cache.values()) {
+    let policy;
+    try {
+      policy = await api.getStaleThreadPolicy(guild.id);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status !== 404) log.warn('staleThreadPolicy fetch failed', { guildId: guild.id, status: err.status });
+      }
+      continue;
+    }
+    if (!policy.enabled) continue;
+
+    const cutoff = Date.now() - policy.idleHours * 3_600_000;
+    const forums = guild.channels.cache.filter(
+      (c): c is ForumChannel => c.type === ChannelType.GuildForum,
+    );
+    for (const forum of forums.values()) {
+      try {
+        const active = await forum.threads.fetchActive().catch(() => null);
+        if (!active) continue;
+        for (const thread of active.threads.values()) {
+          if (thread.archived || thread.locked) continue;
+          // Discord exposes lastMessageId as a snowflake; derive timestamp.
+          const lastMessageId = thread.lastMessageId;
+          let activityMs = thread.createdTimestamp ?? 0;
+          if (lastMessageId) {
+            // Snowflake timestamp: (id >> 22) + Discord epoch (2015-01-01).
+            try {
+              activityMs = Number(BigInt(lastMessageId) >> 22n) + 1_420_070_400_000;
+            } catch {
+              // fall through to createdTimestamp
+            }
+          }
+          if (activityMs > cutoff) continue;
+          if (policy.action === 'lock') {
+            await thread.setLocked(true, 'Stale thread policy').catch(() => {});
+            await thread.setArchived(true, 'Stale thread policy').catch(() => {});
+          } else {
+            await thread.setArchived(true, 'Stale thread policy').catch(() => {});
+          }
+        }
+      } catch (err) {
+        log.warn('Stale thread sweep failed', {
+          guildId: guild.id,
+          forumId: forum.id,
+          err: String(err),
+        });
+      }
+    }
+  }
+}
+
+/**
  * Compute prune candidates for a guild using the bot's local member cache
  * and the activity table. Used by `/prune preview` and `/prune run`.
  * Skips the guild owner, anyone with ManageGuild, anyone holding an
@@ -951,6 +1018,92 @@ async function runDailySnapshots(): Promise<void> {
       }
     } catch (err) {
       log.warn('Daily snapshot failed', { guildId: policy.guildId, err: String(err) });
+    }
+  }
+}
+
+const LIVE_STAGE_MAX_AGE_MS = 2 * 3_600_000;
+
+/**
+ * Stage event tick: starts any 'scheduled' events whose time has come (creates
+ * the StageInstance, flips status to 'live'), then ends any 'live' event whose
+ * underlying StageInstance is gone or which has run for over 2 hours.
+ */
+async function tickStageEvents(client: Client): Promise<void> {
+  for (const guild of client.guilds.cache.values()) {
+    // Start due scheduled events.
+    let scheduled;
+    try {
+      scheduled = await api.listStageEvents(guild.id, { status: 'scheduled', limit: 25 });
+    } catch (err) {
+      if (err instanceof ApiError && err.status !== 404)
+        log.warn('listStageEvents scheduled failed', { guildId: guild.id, status: err.status });
+      scheduled = { events: [] };
+    }
+    const now = Date.now();
+    for (const ev of scheduled.events) {
+      if (new Date(ev.scheduledFor).getTime() > now) continue;
+      try {
+        const channel = await guild.channels.fetch(ev.channelId).catch(() => null);
+        if (!channel || channel.type !== ChannelType.GuildStageVoice) {
+          await api.updateStageEventStatus(guild.id, ev.id, 'cancelled').catch(() => {});
+          continue;
+        }
+        await guild.stageInstances
+          .create((channel as StageChannel).id, { topic: ev.topic })
+          .catch((err: unknown) => {
+            log.warn('stageInstance create failed', { eventId: ev.id, err: String(err) });
+          });
+        await api.updateStageEventStatus(guild.id, ev.id, 'live').catch(() => {});
+      } catch (err) {
+        log.warn('Stage event start failed', { eventId: ev.id, err: String(err) });
+      }
+    }
+
+    // End live events that are stale or whose stage instance is gone.
+    let live;
+    try {
+      live = await api.listStageEvents(guild.id, { status: 'live', limit: 25 });
+    } catch (err) {
+      if (err instanceof ApiError && err.status !== 404)
+        log.warn('listStageEvents live failed', { guildId: guild.id, status: err.status });
+      live = { events: [] };
+    }
+    for (const ev of live.events) {
+      try {
+        const startedAt = new Date(ev.scheduledFor).getTime();
+        const tooOld = now - startedAt > LIVE_STAGE_MAX_AGE_MS;
+        const stage = await guild.stageInstances.fetch(ev.channelId).catch(() => null);
+        if (!tooOld && stage) continue;
+        // Tear down (best-effort) and mark ended.
+        if (stage) await stage.delete().catch(() => {});
+        await api.updateStageEventStatus(guild.id, ev.id, 'ended').catch(() => {});
+        if (ev.recapChannelId) {
+          const recap = guild.channels.cache.get(ev.recapChannelId);
+          if (recap && recap.type === ChannelType.GuildText) {
+            const embed = new EmbedBuilder()
+              .setTitle(`Stage recap: ${ev.topic}`)
+              .setColor(0x5865f2)
+              .setDescription(
+                [
+                  `**Channel:** <#${ev.channelId}>`,
+                  `**Scheduled:** <t:${Math.floor(startedAt / 1000)}:F>`,
+                  ev.speakerIds.length
+                    ? `**Speakers:** ${ev.speakerIds.map((id) => `<@${id}>`).join(', ')}`
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join('\n'),
+              )
+              .setTimestamp(new Date());
+            await (recap as TextChannel)
+              .send({ embeds: [embed], allowedMentions: { parse: [] } })
+              .catch(() => {});
+          }
+        }
+      } catch (err) {
+        log.warn('Stage event end failed', { eventId: ev.id, err: String(err) });
+      }
     }
   }
 }

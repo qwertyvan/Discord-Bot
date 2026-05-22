@@ -54,6 +54,9 @@ model Guild {
   starboardEntries     StarboardEntry[]
   counterChannels      CounterChannel[]
   vanityRoles          VanityRole[]
+  forumAutoTags        ForumAutoTag[]
+  staleThreadPolicy    StaleThreadPolicy?
+  stageScheduledEvents StageScheduledEvent[]
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
@@ -530,6 +533,57 @@ model VanityRole {
   guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId, kind])
+}
+
+// Per-forum-channel keyword-to-tag rule. The bot scans the first message of
+// a newly-created forum thread; any rule whose `keyword` (lower-cased) appears
+// as a substring applies its `tagId` to the thread's applied tags.
+model ForumAutoTag {
+  id        String   @id @default(uuid())
+  guildId   String
+  channelId String
+  keyword   String   @db.VarChar(120)
+  tagId     String
+  createdAt DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, keyword])
+  @@index([guildId])
+}
+
+// Per-guild stale-thread policy. The bot's hourly sweep walks forum channels
+// in the guild; threads whose lastMessage is older than `idleHours` are either
+// archived or locked depending on `action`.
+model StaleThreadPolicy {
+  guildId   String   @id
+  enabled   Boolean  @default(false)
+  idleHours Int      @default(72)
+  // 'archive' | 'lock'
+  action    String   @default("archive") @db.VarChar(16)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Persistent record of a scheduled Stage session. The bot scheduler creates
+// a StageInstance at `scheduledFor`, flips status to 'live', then to 'ended'
+// once the stage closes (posting a recap embed to `recapChannelId` if set).
+model StageScheduledEvent {
+  id             String   @id @default(uuid())
+  guildId        String
+  channelId      String
+  topic          String   @db.VarChar(120)
+  scheduledFor   DateTime
+  speakerIds     String[] @default([])
+  recapChannelId String?
+  // 'scheduled' | 'live' | 'ended' | 'cancelled'
+  status         String   @default("scheduled") @db.VarChar(16)
+  createdAt      DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status, scheduledFor])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every
