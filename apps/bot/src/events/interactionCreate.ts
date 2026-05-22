@@ -20,6 +20,7 @@ import {
   clearActiveRound,
 } from '../commands/minigames/trivia.js';
 import { hangmanMessagePayload } from '../commands/minigames/hangman.js';
+import { dispatchOnCommand } from '../plugins/index.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -30,6 +31,10 @@ export function registerInteractionCreate(client: Client): void {
         api
           .postMetric('bot_commands_total', { command: interaction.commandName })
           .catch(() => undefined);
+        // Fan out to plugins before host handling so plugins can observe the
+        // command even if a builtin or custom handler errors. The dispatcher
+        // catches and isolates plugin failures.
+        dispatchOnCommand(interaction);
         const command = getCommandRegistry().byName.get(interaction.commandName);
         if (command) {
           await command.execute(interaction);

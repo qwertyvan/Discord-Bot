@@ -14,6 +14,10 @@ export default tseslint.config(
       'apps/web/next-env.d.ts',
       'apps/web/postcss.config.js',
       'apps/web/tailwind.config.ts',
+      // Plugin code is third-party-shaped CommonJS that runs in a vm sandbox
+      // with its own globals (console-via-logger, no real `require`). Linting
+      // it under host rules produces false positives.
+      'plugins/**',
     ],
   },
   js.configs.recommended,

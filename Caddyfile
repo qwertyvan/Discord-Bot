@@ -1,0 +1,30 @@
+# Local reverse proxy. Add `127.0.0.1 api.localhost web.localhost` to /etc/hosts
+# (most modern resolvers already map *.localhost → 127.0.0.1).
+#
+# For production, swap the `.localhost` hosts for real names — Caddy will
+# auto-provision Let's Encrypt certs.
+
+{
+	# Disable the admin API on the public network.
+	admin off
+}
+
+api.localhost {
+	reverse_proxy api:4000 {
+		health_uri /health
+		health_interval 30s
+		health_timeout 5s
+	}
+	log {
+		output stdout
+		format console
+	}
+}
+
+web.localhost {
+	reverse_proxy web:3000
+	log {
+		output stdout
+		format console
+	}
+}

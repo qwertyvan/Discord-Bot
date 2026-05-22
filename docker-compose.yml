@@ -1,3 +1,10 @@
+# One-shot bring-up for the whole platform.
+#
+# Usage:  cp .env.example .env  →  edit secrets  →  make up
+#
+# The api/bot share a Postgres instance; the web app talks to api over the
+# `backend` network; caddy exposes api.localhost / web.localhost to the host.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,11 +18,125 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - backend
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-discordbot} -d ${POSTGRES_DB:-discordbot}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: discord-bot-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      DATABASE_URL: ${DATABASE_URL}
+      BOT_API_TOKEN: ${BOT_BEARER_SECRET}
+      TOKEN_ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      SESSION_SECRET: ${SESSION_SECRET}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      DISCORD_OAUTH_REDIRECT_URL: ${DISCORD_OAUTH_REDIRECT_URL}
+      WEB_ORIGIN: ${WEB_ORIGIN}
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  bot:
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
+    container_name: discord-bot-bot
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DEV_GUILD_ID: ${DEV_GUILD_ID:-}
+      API_BASE_URL: http://api:4000
+      BOT_API_TOKEN: ${BOT_BEARER_SECRET}
+    volumes:
+      # Mount plugins dir read-only — operators drop new plugin folders here
+      # and restart the bot to pick them up.
+      - ./plugins:/repo/plugins:ro
+    networks:
+      - backend
+    healthcheck:
+      # Liveness probe: bot has no HTTP server, so we just verify the node
+      # process is alive.
+      test: ["CMD-SHELL", "pgrep -f 'node dist/index.js' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    container_name: discord-bot-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: discord-bot-caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  backend:
+    driver: bridge
+
 volumes:
   postgres-data:
+  caddy-data:
+  caddy-config:
