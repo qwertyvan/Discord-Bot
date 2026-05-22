@@ -126,6 +126,9 @@ import type {
   VanityRole,
   VanityRoleKind,
   UpsertVanityRoleInput,
+  CreateFeedSubscriptionInput,
+  FeedKind,
+  FeedSubscription,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1026,4 +1029,26 @@ export const api = {
     call<void>(`/guilds/${guildId}/vanity-roles/${id}`, { method: 'DELETE' }),
   deleteVanityRoleByRoleId: (guildId: string, roleId: string) =>
     call<void>(`/guilds/${guildId}/vanity-roles/by-role/${roleId}`, { method: 'DELETE' }),
+  // Public-feed subscriptions (YouTube / Reddit / Bluesky / Mastodon)
+  listFeeds: (guildId: string, query?: { kind?: FeedKind }) =>
+    call<{ feeds: FeedSubscription[] }>(
+      `/guilds/${guildId}/feeds`,
+      query?.kind ? { query: { kind: query.kind } } : {},
+    ),
+  createFeed: (guildId: string, body: CreateFeedSubscriptionInput) =>
+    call<FeedSubscription>(`/guilds/${guildId}/feeds`, { method: 'POST', body }),
+  deleteFeed: (guildId: string, feedId: string) =>
+    call<void>(`/guilds/${guildId}/feeds/${feedId}`, { method: 'DELETE' }),
+  updateFeedLastItem: (guildId: string, feedId: string, lastItemId: string | null) =>
+    call<FeedSubscription>(`/guilds/${guildId}/feeds/${feedId}/lastItem`, {
+      method: 'PATCH',
+      body: { lastItemId },
+    }),
+  enabledFeeds: (query?: { kind?: FeedKind; limit?: number }) =>
+    call<{ feeds: FeedSubscription[] }>(`/feeds/enabled`, {
+      query: {
+        ...(query?.kind ? { kind: query.kind } : {}),
+        ...(query?.limit !== undefined ? { limit: query.limit } : {}),
+      },
+    }),
 };

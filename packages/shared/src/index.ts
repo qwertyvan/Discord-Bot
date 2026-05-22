@@ -15,6 +15,7 @@ export * from './leveling.js';
 export * from './economy.js';
 export * from './tickets.js';
 export * from './integrations.js';
+export * from './feeds.js';
 export * from './scheduled.js';
 export * from './custom-command.js';
 export * from './community.js';

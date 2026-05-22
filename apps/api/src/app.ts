@@ -39,6 +39,7 @@ import { economyRoutes } from './routes/economy.js';
 import { ticketsRoutes } from './routes/tickets.js';
 import { statsRoutes } from './routes/stats.js';
 import { integrationsRoutes } from './routes/integrations.js';
+import { feedsRoutes } from './routes/feeds.js';
 import { userTimezoneRoutes } from './routes/user-timezone.js';
 import { scheduledRoutes } from './routes/scheduled.js';
 import { shortLinksRoutes } from './routes/short-links.js';
@@ -123,6 +124,7 @@ export async function buildApp() {
   await app.register(ticketsRoutes);
   await app.register(statsRoutes);
   await app.register(integrationsRoutes);
+  await app.register(feedsRoutes);
   await app.register(userTimezoneRoutes);
   await app.register(scheduledRoutes);
   await app.register(shortLinksRoutes);
