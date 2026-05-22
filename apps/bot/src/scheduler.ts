@@ -11,6 +11,7 @@ import {
 import { api, ApiError } from './api-client.js';
 import { log } from './logger.js';
 import { pollMessagePayload } from './util/poll-render.js';
+import { giveawayMessagePayload } from './util/giveaway-render.js';
 import { AttachmentBuilder } from 'discord.js';
 import { fetchFeed } from './integrations/rss.js';
 import { fetchStream } from './integrations/twitch.js';
@@ -24,6 +25,7 @@ const POSTS_TICK_MS = 15_000;
 const RSS_TICK_MS = 60_000;
 const TWITCH_TICK_MS = 60_000;
 const ANNOUNCE_TICK_MS = 30_000;
+const GIVEAWAY_TICK_MS = 30_000;
 const BIRTHDAY_TICK_MS = 5 * 60_000;
 const SLA_TICK_MS = 60_000;
 const IDLE_TICK_MS = 5 * 60_000;
@@ -70,6 +72,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('activity-roles', () => sweepActivityRoles(client))().catch(noop), ACTIVITY_ROLES_TICK_MS);
   setInterval(() => tick('backup', () => runDailySnapshots())().catch(noop), BACKUP_TICK_MS);
   setInterval(() => tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop), APPEAL_SLA_TICK_MS);
+  setInterval(() => tick('giveaways', () => endDueGiveaways(client))().catch(noop), GIVEAWAY_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -85,6 +88,7 @@ export function startScheduler(client: Client): void {
     tick('activity-roles', () => sweepActivityRoles(client))().catch(noop);
     tick('backup', () => runDailySnapshots())().catch(noop);
     tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop);
+    tick('giveaways', () => endDueGiveaways(client))().catch(noop);
   }, 5_000);
 }
 
@@ -222,6 +226,45 @@ async function fireDueAnnouncements(): Promise<void> {
       await api.advanceAnnouncement(a.id);
     } catch (err) {
       log.warn('Announcement fire failed', { id: a.id, err: String(err) });
+    }
+  }
+}
+
+async function endDueGiveaways(client: Client): Promise<void> {
+  let due;
+  try {
+    due = await api.dueGiveaways();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('dueGiveaways API error', { status: err.status });
+    return;
+  }
+
+  for (const g of due.giveaways) {
+    try {
+      const ended = await api.endGiveaway(g.guildId, g.id);
+      if (!ended.messageId || !ended.channelId) continue;
+      const guild = client.guilds.cache.get(ended.guildId);
+      if (!guild) continue;
+      const channel = guild.channels.cache.get(ended.channelId);
+      if (!channel || channel.type !== ChannelType.GuildText) continue;
+      const message = await (channel as TextChannel).messages
+        .fetch(ended.messageId)
+        .catch(() => null);
+      if (!message) continue;
+      const winnerMention =
+        ended.winners.length > 0
+          ? {
+              content: `🎉 Congrats ${ended.winners
+                .map((w) => `<@${w.userId}>`)
+                .join(', ')} — you won **${ended.prize}**!`,
+              allowedMentions: { users: ended.winners.map((w) => w.userId) },
+            }
+          : { content: `🏁 Giveaway for **${ended.prize}** ended — no eligible entries.` };
+      await message
+        .edit({ ...giveawayMessagePayload(ended, ended.entryCount), ...winnerMention })
+        .catch(() => {});
+    } catch (err) {
+      log.warn('Giveaway end failed', { id: g.id, err: String(err) });
     }
   }
 }

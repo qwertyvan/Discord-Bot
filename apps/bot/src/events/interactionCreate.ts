@@ -21,6 +21,7 @@ import {
 } from '../commands/minigames/trivia.js';
 import { hangmanMessagePayload } from '../commands/minigames/hangman.js';
 import { dispatchOnCommand } from '../plugins/index.js';
+import { giveawayMessagePayload } from '../util/giveaway-render.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -99,6 +100,10 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('hm:g:')) {
           await handleHangmanGuess(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('gw:enter:')) {
+          await handleGiveawayEnter(interaction);
           return;
         }
       }
@@ -495,6 +500,90 @@ async function handleHangmanGuess(interaction: ButtonInteraction): Promise<void>
     } else {
       await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
+  }
+}
+
+async function handleGiveawayEnter(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  const [, , giveawayId] = interaction.customId.split(':');
+  if (!giveawayId) return;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const g = await api.getGiveaway(interaction.guildId, giveawayId);
+    if (g.status !== 'active') {
+      await interaction.editReply('This giveaway is no longer accepting entries.');
+      return;
+    }
+    if (new Date(g.endsAt).getTime() <= Date.now()) {
+      await interaction.editReply('This giveaway has already ended.');
+      return;
+    }
+
+    const member = await interaction.guild.members
+      .fetch(interaction.user.id)
+      .catch(() => null);
+    if (!member) {
+      await interaction.editReply('Could not verify your membership.');
+      return;
+    }
+
+    if (g.requireRoleId && !member.roles.cache.has(g.requireRoleId)) {
+      await interaction.editReply(`You need <@&${g.requireRoleId}> to enter this giveaway.`);
+      return;
+    }
+
+    if (g.requireMinLevel !== null && g.requireMinLevel > 0) {
+      try {
+        const ml = await api.getMemberLevel(interaction.guildId, interaction.user.id);
+        if (ml.level < g.requireMinLevel) {
+          await interaction.editReply(
+            `You need to be at least level **${g.requireMinLevel}** to enter (you are level ${ml.level}).`,
+          );
+          return;
+        }
+      } catch (err) {
+        // If leveling isn't configured, treat as not meeting requirement.
+        if (err instanceof ApiError && err.status === 404) {
+          await interaction.editReply(
+            `You need to be at least level **${g.requireMinLevel}** to enter, but leveling is not enabled.`,
+          );
+          return;
+        }
+        throw err;
+      }
+    }
+
+    const bonusMatches = g.weightedBonusRoles.filter((r) => member.roles.cache.has(r)).length;
+    const weight = 1 + bonusMatches;
+
+    const updated = await api.enterGiveaway(interaction.guildId, giveawayId, {
+      userId: interaction.user.id,
+      weight,
+    });
+
+    if (updated.messageId && updated.channelId) {
+      const channel = interaction.guild.channels.cache.get(updated.channelId);
+      if (channel && channel.type === ChannelType.GuildText) {
+        const message = await (channel as TextChannel).messages
+          .fetch(updated.messageId)
+          .catch(() => null);
+        if (message) {
+          await message
+            .edit(giveawayMessagePayload(updated, updated.entryCount))
+            .catch(() => {});
+        }
+      }
+    }
+
+    await interaction.editReply(
+      weight > 1
+        ? `🎉 Entry confirmed with ${weight}× weight (bonus roles).`
+        : '🎉 Entry confirmed. Good luck!',
+    );
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Entry failed.';
+    await interaction.editReply(msg);
   }
 }
 

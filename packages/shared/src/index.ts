@@ -26,6 +26,7 @@ export * from './minigames.js';
 export * from './backup.js';
 export * from './appeals.js';
 export * from './music.js';
+export * from './giveaways.js';
 export * from './user.js';
 export * from './errors.js';
 export * from './permissions.js';
