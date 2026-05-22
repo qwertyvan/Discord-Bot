@@ -7,6 +7,7 @@ import {
   type ButtonInteraction,
   type Client,
   type MessageComponentInteraction,
+  type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
   type TextChannel,
 } from 'discord.js';
@@ -66,6 +67,23 @@ export function registerInteractionCreate(client: Client): void {
         }
         log.warn('Unknown command', { name: interaction.commandName });
         return;
+      }
+
+      if (interaction.isMessageContextMenuCommand()) {
+        const cmd = getCommandRegistry().contextByName.get(interaction.commandName);
+        if (cmd) {
+          await cmd.execute(interaction);
+          return;
+        }
+        log.warn('Unknown context command', { name: interaction.commandName });
+        return;
+      }
+
+      if (interaction.isModalSubmit()) {
+        if (interaction.customId.startsWith('report-modal:')) {
+          await handleReportModal(interaction);
+          return;
+        }
       }
 
       if (interaction.isButton()) {
@@ -583,6 +601,49 @@ async function handleGiveawayEnter(interaction: ButtonInteraction): Promise<void
     );
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Entry failed.';
+    await interaction.editReply(msg);
+  }
+}
+
+async function handleReportModal(interaction: ModalSubmitInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  // customId is "report-modal:<messageId>:<targetUserId>:<channelId>".
+  const [, messageId, targetUserId, channelId] = interaction.customId.split(':');
+  if (!messageId || !targetUserId || !channelId) {
+    await interaction.reply({
+      content: 'Could not parse the report context.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const reason = interaction.fields.getTextInputValue('reason').trim();
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  // Best-effort fetch the source message so we can store its content in the
+  // report; if the message is gone we still file the report so staff have a
+  // record of what was happening.
+  let sourceContent = '';
+  const channel = interaction.guild.channels.cache.get(channelId);
+  if (channel && channel.type === ChannelType.GuildText) {
+    const msg = await (channel as TextChannel).messages.fetch(messageId).catch(() => null);
+    if (msg) sourceContent = msg.content;
+  }
+  // Persist the reason alongside the source content so a reviewing mod sees
+  // both. Cap at the column limit.
+  const content = (`Reason: ${reason}\n---\n${sourceContent}`).slice(0, 2000);
+
+  try {
+    await api.createReport(interaction.guildId, {
+      reporterId: interaction.user.id,
+      targetUserId,
+      targetMessageId: messageId,
+      channelId,
+      content,
+    });
+    await interaction.editReply('✅ Report filed. A moderator will review it.');
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to file report.';
     await interaction.editReply(msg);
   }
 }

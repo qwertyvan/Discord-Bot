@@ -143,6 +143,10 @@ import type {
   CreatePendingVerificationInput,
   VerifyChallengeInput,
   VerifyChallengeResult,
+  Report,
+  CreateReportInput,
+  ReportAction,
+  ReportStatus,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1012,6 +1016,20 @@ export const api = {
           }
         : {},
     ),
+
+  // Reports / mod queue
+  listReports: (guildId: string, query?: { status?: ReportStatus; limit?: number }) =>
+    call<{ reports: Report[] }>(
+      `/guilds/${guildId}/reports`,
+      query
+        ? {
+            query: {
+              ...(query.status ? { status: query.status } : {}),
+              ...(query.limit !== undefined ? { limit: query.limit } : {}),
+            },
+          }
+        : {},
+    ),
   recordStar: (guildId: string, body: RecordStarInput) =>
     call<StarboardEntry>(`/guilds/${guildId}/starboard-entries`, { method: 'POST', body }),
   setStarboardMessageId: (
@@ -1131,6 +1149,20 @@ export const api = {
     call<{ pending: PendingVerification[] }>(`/pending-verifications/expired`),
   verifyChallenge: (guildId: string, userId: string, body: VerifyChallengeInput) =>
     call<VerifyChallengeResult>(`/guilds/${guildId}/pending-verifications/${userId}/verify`, {
+      method: 'POST',
+      body,
+    }),
+
+  getReport: (guildId: string, reportId: string) =>
+    call<Report>(`/guilds/${guildId}/reports/${reportId}`),
+  createReport: (guildId: string, body: CreateReportInput) =>
+    call<Report>(`/guilds/${guildId}/reports`, { method: 'POST', body }),
+  reviewReport: (
+    guildId: string,
+    reportId: string,
+    body: { action: ReportAction; note?: string; reviewerId: string },
+  ) =>
+    call<Report>(`/guilds/${guildId}/reports/${reportId}/review`, {
       method: 'POST',
       body,
     }),

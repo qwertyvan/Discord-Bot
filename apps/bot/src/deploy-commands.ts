@@ -5,7 +5,11 @@ import { log } from './logger.js';
 
 async function main(): Promise<void> {
   const registry = getCommandRegistry();
-  const body = registry.entries.map(({ command }) => command.data.toJSON());
+  // Slash and context-menu commands serialize through the same REST PUT.
+  const body = [
+    ...registry.entries.map(({ command }) => command.data.toJSON()),
+    ...registry.contextEntries.map(({ command }) => command.data.toJSON()),
+  ];
 
   const rest = new REST({ version: '10' }).setToken(env.DISCORD_TOKEN);
 
