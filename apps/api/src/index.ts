@@ -1,7 +1,12 @@
+import { initOtel } from './util/otel.js';
 import { buildApp } from './app.js';
 import { startWebhookWorker } from './workers/webhook-worker.js';
 
 async function main(): Promise<void> {
+  // Best-effort: starts the OpenTelemetry NodeSDK when OTEL_EXPORTER_OTLP_ENDPOINT
+  // is set and the @opentelemetry packages are available. No-op otherwise.
+  await initOtel();
+
   const app = await buildApp();
   try {
     await app.listen({ host: app.config.API_HOST, port: app.config.API_PORT });

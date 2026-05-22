@@ -899,4 +899,19 @@ export const api = {
     }),
   revokeApiToken: (guildId: string, tokenId: string) =>
     call<void>(`/guilds/${guildId}/api-tokens/${tokenId}`, { method: 'DELETE' }),
+  // Observability — bot → API heartbeat + counter bumps.
+  postHeartbeat: () => call<{ ok: true }>(`/bot/heartbeat`, { method: 'POST', body: {} }),
+  postMetric: (
+    name: string,
+    labels?: Record<string, string | number>,
+    by?: number,
+  ) =>
+    call<{ ok: boolean }>(`/bot/metric`, {
+      method: 'POST',
+      body: {
+        name,
+        ...(labels ? { labels } : {}),
+        ...(by !== undefined ? { by } : {}),
+      },
+    }),
 };

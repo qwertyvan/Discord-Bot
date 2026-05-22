@@ -33,41 +33,58 @@ const ACTIVITY_ROLES_TICK_MS = 24 * 60 * 60_000;
 const BACKUP_TICK_MS = 24 * 60 * 60_000;
 const APPEAL_SLA_TICK_MS = 60 * 60_000; // hourly
 
+const HEARTBEAT_TICK_MS = 30_000;
+
+// Wrapper that bumps scheduler_ticks_total on the API's metrics registry
+// before invoking the per-tick handler. Counter failures never block the tick.
+function tick(name: string, fn: () => Promise<void>): () => Promise<void> {
+  return async () => {
+    api.postMetric('scheduler_ticks_total', { tick: name }).catch(() => undefined);
+    await fn();
+  };
+}
+
+async function sendHeartbeat(): Promise<void> {
+  try {
+    await api.postHeartbeat();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('heartbeat API error', { status: err.status });
+  }
+}
+
 export function startScheduler(client: Client): void {
-  setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
-  setInterval(() => closeDuePolls(client).catch(noop), POLL_TICK_MS);
-  setInterval(() => deliverPendingPosts(client).catch(noop), POSTS_TICK_MS);
-  setInterval(() => pollRssFeeds().catch(noop), RSS_TICK_MS);
-  setInterval(() => pollTwitchStreams().catch(noop), TWITCH_TICK_MS);
-  setInterval(() => fireDueAnnouncements().catch(noop), ANNOUNCE_TICK_MS);
-  setInterval(() => fireBirthdays(client).catch(noop), BIRTHDAY_TICK_MS);
-  setInterval(() => sweepSlaReminders(client).catch(noop), SLA_TICK_MS);
-  setInterval(() => sweepIdleTickets(client).catch(noop), IDLE_TICK_MS);
-  setInterval(() => awardActiveVoiceXp(client).catch(noop), VOICE_XP_TICK_MS);
-  setInterval(() => {
-    try {
-      tickVoiceMinutes(client);
-    } catch (err) {
-      log.warn('tickVoiceMinutes error', { err: String(err) });
-    }
-    activityBatcher.flushAll().catch(noop);
-  }, ACTIVITY_TICK_MS);
-  setInterval(() => sweepActivityRoles(client).catch(noop), ACTIVITY_ROLES_TICK_MS);
-  setInterval(() => runDailySnapshots().catch(noop), BACKUP_TICK_MS);
-  setInterval(() => sweepStaleAppeals(client).catch(noop), APPEAL_SLA_TICK_MS);
+  setInterval(() => tick('reminders', () => fireDueReminders(client))().catch(noop), REMINDER_TICK_MS);
+  setInterval(() => tick('polls', () => closeDuePolls(client))().catch(noop), POLL_TICK_MS);
+  setInterval(() => tick('posts', () => deliverPendingPosts(client))().catch(noop), POSTS_TICK_MS);
+  setInterval(() => tick('rss', () => pollRssFeeds())().catch(noop), RSS_TICK_MS);
+  setInterval(() => tick('twitch', () => pollTwitchStreams())().catch(noop), TWITCH_TICK_MS);
+  setInterval(() => tick('announce', () => fireDueAnnouncements())().catch(noop), ANNOUNCE_TICK_MS);
+  setInterval(() => tick('birthday', () => fireBirthdays(client))().catch(noop), BIRTHDAY_TICK_MS);
+  setInterval(() => tick('sla', () => sweepSlaReminders(client))().catch(noop), SLA_TICK_MS);
+  setInterval(() => tick('idle', () => sweepIdleTickets(client))().catch(noop), IDLE_TICK_MS);
+  setInterval(() => tick('voice-xp', () => awardActiveVoiceXp(client))().catch(noop), VOICE_XP_TICK_MS);
+  setInterval(() => tick('activity', async () => {
+    try { tickVoiceMinutes(client); } catch (err) { log.warn('tickVoiceMinutes error', { err: String(err) }); }
+    await activityBatcher.flushAll();
+  })().catch(noop), ACTIVITY_TICK_MS);
+  setInterval(() => tick('activity-roles', () => sweepActivityRoles(client))().catch(noop), ACTIVITY_ROLES_TICK_MS);
+  setInterval(() => tick('backup', () => runDailySnapshots())().catch(noop), BACKUP_TICK_MS);
+  setInterval(() => tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop), APPEAL_SLA_TICK_MS);
+  setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
-    fireDueReminders(client).catch(noop);
-    closeDuePolls(client).catch(noop);
-    deliverPendingPosts(client).catch(noop);
-    pollRssFeeds().catch(noop);
-    pollTwitchStreams().catch(noop);
-    fireDueAnnouncements().catch(noop);
-    fireBirthdays(client).catch(noop);
-    sweepSlaReminders(client).catch(noop);
-    sweepIdleTickets(client).catch(noop);
-    sweepActivityRoles(client).catch(noop);
-    runDailySnapshots().catch(noop);
-    sweepStaleAppeals(client).catch(noop);
+    sendHeartbeat().catch(noop);
+    tick('reminders', () => fireDueReminders(client))().catch(noop);
+    tick('polls', () => closeDuePolls(client))().catch(noop);
+    tick('posts', () => deliverPendingPosts(client))().catch(noop);
+    tick('rss', () => pollRssFeeds())().catch(noop);
+    tick('twitch', () => pollTwitchStreams())().catch(noop);
+    tick('announce', () => fireDueAnnouncements())().catch(noop);
+    tick('birthday', () => fireBirthdays(client))().catch(noop);
+    tick('sla', () => sweepSlaReminders(client))().catch(noop);
+    tick('idle', () => sweepIdleTickets(client))().catch(noop);
+    tick('activity-roles', () => sweepActivityRoles(client))().catch(noop);
+    tick('backup', () => runDailySnapshots())().catch(noop);
+    tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop);
   }, 5_000);
 }
 

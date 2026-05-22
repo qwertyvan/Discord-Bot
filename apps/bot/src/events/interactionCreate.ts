@@ -25,6 +25,11 @@ export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
       if (interaction.isChatInputCommand()) {
+        // Fire-and-forget metrics bump. The label is the bare command name so
+        // {command} cardinality stays bounded to the registered command set.
+        api
+          .postMetric('bot_commands_total', { command: interaction.commandName })
+          .catch(() => undefined);
         const command = getCommandRegistry().byName.get(interaction.commandName);
         if (command) {
           await command.execute(interaction);

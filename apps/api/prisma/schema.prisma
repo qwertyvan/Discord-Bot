@@ -1236,3 +1236,10 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
 }
+
+// Singleton row (id = 1) updated by the bot every ~30s via /bot/heartbeat.
+// /health uses updatedAt to compute heartbeat age and surface bot liveness.
+model BotHeartbeat {
+  id        Int      @id @default(1)
+  updatedAt DateTime @updatedAt @default(now())
+}

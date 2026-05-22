@@ -7,9 +7,17 @@ export function Topbar({ user }: { user: SessionUser }) {
   return (
     <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-        <Link href="/dashboard" className="text-sm font-semibold tracking-tight">
-          Discord Bot Admin
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard" className="text-sm font-semibold tracking-tight">
+            Discord Bot Admin
+          </Link>
+          <Link
+            href="/dashboard/health"
+            className="text-xs text-slate-400 transition hover:text-slate-200"
+          >
+            Health
+          </Link>
+        </div>
         <div className="flex items-center gap-3">
           {user.avatarUrl && (
             <img
