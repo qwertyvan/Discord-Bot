@@ -58,6 +58,7 @@ model Guild {
   staleThreadPolicy    StaleThreadPolicy?
   stageScheduledEvents StageScheduledEvent[]
   reports              Report[]
+  serverTemplates      ServerTemplate[]
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
@@ -643,6 +644,27 @@ model PendingVerification {
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, userId])
+}
+
+// Captured guild topology (roles + channels + overwrites) saved as a
+// versioned, optionally public template. Applied to other guilds to clone
+// the structural shape (no member data, no message history).
+model ServerTemplate {
+  id            String   @id @default(uuid())
+  ownerGuildId  String
+  name          String   @db.VarChar(120)
+  description   String?  @db.VarChar(500)
+  payload       Json
+  version       Int      @default(1)
+  public        Boolean  @default(false)
+  createdBy     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ownerGuild    Guild    @relation(fields: [ownerGuildId], references: [id], onDelete: Cascade)
+
+  @@index([ownerGuildId])
+  @@index([public])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every

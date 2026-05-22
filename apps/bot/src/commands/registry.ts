@@ -20,6 +20,7 @@ import { musicCommands } from './music/index.js';
 import { giveawayCommands } from './giveaways/index.js';
 import { integrationsCommands } from './integrations/index.js';
 import { safetyCommands, safetyContextCommands } from './safety/index.js';
+import { templateCommands } from './templates/index.js';
 
 export interface CommandEntry {
   group: string;
@@ -69,6 +70,8 @@ export function getCommandRegistry(): CommandRegistry {
     integrations: integrationsCommands,
     safety: safetyCommands,
   };
+
+  groups.templates = templateCommands;
 
   const contextGroups: Record<string, MessageContextCommand[]> = {
     safety: safetyContextCommands,
