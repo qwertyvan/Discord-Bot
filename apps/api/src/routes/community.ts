@@ -13,6 +13,7 @@ import {
   UpsertStickyMessageSchema,
 } from '@discord-bot/shared';
 import { HttpError } from '../errors.js';
+import { dispatchEvent } from '../webhook-dispatch.js';
 
 const GuildParams = z.object({ guildId: SnowflakeSchema });
 const ChannelParams = z.object({ guildId: SnowflakeSchema, channelId: SnowflakeSchema });
@@ -203,7 +204,11 @@ export const communityRoutes: FastifyPluginAsyncZod = async (app) => {
         },
         include: { votes: true },
       });
-      return serializeSuggestion(item);
+      const serialized = serializeSuggestion(item);
+      dispatchEvent(app.prisma, guildId, 'suggestion.created', { suggestion: serialized }).catch(
+        (err) => req.log.warn({ err }, 'dispatchEvent(suggestion.created) failed'),
+      );
+      return serialized;
     },
   );
 
@@ -245,7 +250,11 @@ export const communityRoutes: FastifyPluginAsyncZod = async (app) => {
         },
         include: { votes: true },
       });
-      return serializeSuggestion(item);
+      const serialized = serializeSuggestion(item);
+      dispatchEvent(app.prisma, req.params.guildId, 'suggestion.reviewed', {
+        suggestion: serialized,
+      }).catch((err) => req.log.warn({ err }, 'dispatchEvent(suggestion.reviewed) failed'));
+      return serialized;
     },
   );
 

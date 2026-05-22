@@ -8,6 +8,7 @@ import {
   UpdateLoggingConfigSchema,
 } from '@discord-bot/shared';
 import { HttpError } from '../errors.js';
+import { dispatchEvent } from '../webhook-dispatch.js';
 
 const Params = z.object({ guildId: SnowflakeSchema });
 
@@ -33,7 +34,7 @@ export const auditEventsRoutes: FastifyPluginAsyncZod = async (app) => {
           payload: (req.body.payload ?? {}) as Prisma.InputJsonValue,
         },
       });
-      return {
+      const serialized = {
         id: event.id,
         guildId: event.guildId,
         type: event.type,
@@ -42,6 +43,19 @@ export const auditEventsRoutes: FastifyPluginAsyncZod = async (app) => {
         payload: event.payload as Record<string, unknown>,
         createdAt: event.createdAt.toISOString(),
       };
+      // Forward member-lifecycle events to subscribed outbound webhooks. The
+      // bot's audit dispatcher already fires this endpoint for join/leave, so
+      // we get full coverage for free.
+      if (req.body.type === 'MEMBER_JOIN') {
+        dispatchEvent(app.prisma, guildId, 'member.join', { event: serialized }).catch((err) =>
+          req.log.warn({ err }, 'dispatchEvent(member.join) failed'),
+        );
+      } else if (req.body.type === 'MEMBER_LEAVE') {
+        dispatchEvent(app.prisma, guildId, 'member.leave', { event: serialized }).catch((err) =>
+          req.log.warn({ err }, 'dispatchEvent(member.leave) failed'),
+        );
+      }
+      return serialized;
     },
   );
 

@@ -13,6 +13,7 @@ import {
   UpdateTicketSchema,
 } from '@discord-bot/shared';
 import { HttpError } from '../errors.js';
+import { dispatchEvent } from '../webhook-dispatch.js';
 
 const GuildParams = z.object({ guildId: SnowflakeSchema });
 const CategoryParams = z.object({ guildId: SnowflakeSchema, categoryId: z.string().uuid() });
@@ -204,7 +205,11 @@ export const ticketsRoutes: FastifyPluginAsyncZod = async (app) => {
           },
         });
       });
-      return serializeTicket(ticket);
+      const serialized = serializeTicket(ticket);
+      dispatchEvent(app.prisma, guildId, 'ticket.opened', { ticket: serialized }).catch((err) =>
+        req.log.warn({ err }, 'dispatchEvent(ticket.opened) failed'),
+      );
+      return serialized;
     },
   );
 
@@ -275,7 +280,18 @@ export const ticketsRoutes: FastifyPluginAsyncZod = async (app) => {
         where: { id: ticketId },
         data: update,
       });
-      return serializeTicket(updated);
+      const serialized = serializeTicket(updated);
+      // Fire ticket.closed exactly once per transition (open → closed). We
+      // checked `existing.status !== 'closed'` above when setting closedAt.
+      if (
+        patch.status === 'closed' &&
+        existing.status !== 'closed'
+      ) {
+        dispatchEvent(app.prisma, guildId, 'ticket.closed', { ticket: serialized }).catch((err) =>
+          req.log.warn({ err }, 'dispatchEvent(ticket.closed) failed'),
+        );
+      }
+      return serialized;
     },
   );
 
