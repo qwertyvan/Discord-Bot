@@ -61,6 +61,7 @@ import { starboardRoutes } from './routes/starboard.js';
 import { countersRoutes } from './routes/counters.js';
 import { forumStageRoutes } from './routes/forum-stage.js';
 import { antiRaidRoutes } from './routes/anti-raid.js';
+import { linkSafetyRoutes } from './routes/link-safety.js';
 import { reportsRoutes } from './routes/reports.js';
 import { templatesRoutes } from './routes/templates.js';
 import { privacyRoutes } from './routes/privacy.js';
@@ -156,6 +157,7 @@ export async function buildApp() {
   await app.register(countersRoutes);
   await app.register(forumStageRoutes);
   await app.register(antiRaidRoutes);
+  await app.register(linkSafetyRoutes);
   await app.register(reportsRoutes);
   await app.register(templatesRoutes);
   await app.register(privacyRoutes);

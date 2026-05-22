@@ -181,6 +181,11 @@ import type {
   OnboardingForm,
   ReviewApplicationInput,
   UpsertOnboardingFormInput,
+  LinkSafetyConfig,
+  UpsertLinkSafetyConfigInput,
+  LinkDomain,
+  CreateLinkDomainInput,
+  LinkDomainKind,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1448,4 +1453,25 @@ export const api = {
       method: 'PATCH',
       body,
     }),
+  // ─── Link safety ──────────────────────────────────────────────────
+  getLinkSafetyConfig: (guildId: string) =>
+    call<LinkSafetyConfig>(`/guilds/${guildId}/link-safety-config`),
+  // Lightweight probe used by the hot-path scanner; the API returns the same
+  // payload as `getLinkSafetyConfig` but is intended to be cached aggressively.
+  getEnabledLinkSafetyConfig: (guildId: string) =>
+    call<LinkSafetyConfig>(`/guilds/${guildId}/link-safety-config/enabled`),
+  upsertLinkSafetyConfig: (guildId: string, body: UpsertLinkSafetyConfigInput) =>
+    call<LinkSafetyConfig>(`/guilds/${guildId}/link-safety-config`, {
+      method: 'PUT',
+      body,
+    }),
+  listLinkDomains: (guildId: string, kind?: LinkDomainKind) =>
+    call<{ domains: LinkDomain[] }>(
+      `/guilds/${guildId}/link-domains`,
+      kind ? { query: { kind } } : {},
+    ),
+  createLinkDomain: (guildId: string, body: CreateLinkDomainInput) =>
+    call<LinkDomain>(`/guilds/${guildId}/link-domains`, { method: 'POST', body }),
+  deleteLinkDomain: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/link-domains/${id}`, { method: 'DELETE' }),
 };
