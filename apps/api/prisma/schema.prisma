@@ -57,6 +57,7 @@ model Guild {
   forumAutoTags        ForumAutoTag[]
   staleThreadPolicy    StaleThreadPolicy?
   stageScheduledEvents StageScheduledEvent[]
+  reports              Report[]
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
@@ -742,6 +743,31 @@ model GiveawayWinner {
   giveaway    Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
 
   @@index([giveawayId])
+}
+
+// Member-filed report against a message or user. Lands in a per-guild
+// mod queue, where staff review and either dismiss or take action
+// (warn / mute / delete the source message).
+model Report {
+  id              String    @id @default(uuid())
+  guildId         String
+  reporterId      String
+  targetUserId    String
+  targetMessageId String?
+  channelId       String
+  content         String    @db.VarChar(2000)
+  // 'open' | 'reviewed'
+  status          String    @default("open") @db.VarChar(16)
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  // 'warn' | 'mute' | 'delete' | 'dismiss'
+  actionTaken     String?   @db.VarChar(32)
+  reviewNote      String?   @db.VarChar(500)
+  createdAt       DateTime  @default(now())
+
+  guild           Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status, createdAt])
 }
 
 // React-to-pin: when a message gets `threshold` distinct reactions of `emoji`,

@@ -1,4 +1,4 @@
-import type { SlashCommand } from '../command.js';
+import type { MessageContextCommand, SlashCommand } from '../command.js';
 import { generalCommands } from './general/index.js';
 import { moderationCommands } from './moderation/index.js';
 import { onboardingCommands } from './onboarding/index.js';
@@ -19,16 +19,26 @@ import { backupCommands } from './backup/index.js';
 import { musicCommands } from './music/index.js';
 import { giveawayCommands } from './giveaways/index.js';
 import { integrationsCommands } from './integrations/index.js';
-import { safetyCommands } from './safety/index.js';
+import { safetyCommands, safetyContextCommands } from './safety/index.js';
 
 export interface CommandEntry {
   group: string;
   command: SlashCommand;
 }
 
+export interface ContextCommandEntry {
+  group: string;
+  command: MessageContextCommand;
+}
+
 export interface CommandRegistry {
   byName: Map<string, SlashCommand>;
   entries: CommandEntry[];
+  // Context-menu commands keyed by their visible name (e.g. "Report message").
+  // Discord routes these through their own interaction type, so we keep a
+  // separate map; they still serialize through the same REST PUT.
+  contextByName: Map<string, MessageContextCommand>;
+  contextEntries: ContextCommandEntry[];
 }
 
 let cached: CommandRegistry | null = null;
@@ -60,6 +70,10 @@ export function getCommandRegistry(): CommandRegistry {
     safety: safetyCommands,
   };
 
+  const contextGroups: Record<string, MessageContextCommand[]> = {
+    safety: safetyContextCommands,
+  };
+
   const byName = new Map<string, SlashCommand>();
   const entries: CommandEntry[] = [];
   for (const [group, cmds] of Object.entries(groups)) {
@@ -73,6 +87,19 @@ export function getCommandRegistry(): CommandRegistry {
     }
   }
 
-  cached = { byName, entries };
+  const contextByName = new Map<string, MessageContextCommand>();
+  const contextEntries: ContextCommandEntry[] = [];
+  for (const [group, cmds] of Object.entries(contextGroups)) {
+    for (const command of cmds) {
+      const name = command.data.name;
+      if (contextByName.has(name)) {
+        throw new Error(`Duplicate context command name: ${name}`);
+      }
+      contextByName.set(name, command);
+      contextEntries.push({ group, command });
+    }
+  }
+
+  cached = { byName, entries, contextByName, contextEntries };
   return cached;
 }
