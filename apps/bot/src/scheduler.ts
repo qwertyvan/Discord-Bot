@@ -30,6 +30,7 @@ const IDLE_TICK_MS = 5 * 60_000;
 const VOICE_XP_TICK_MS = 60_000;
 const ACTIVITY_TICK_MS = 60_000;
 const ACTIVITY_ROLES_TICK_MS = 24 * 60 * 60_000;
+const BACKUP_TICK_MS = 24 * 60 * 60_000;
 
 export function startScheduler(client: Client): void {
   setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
@@ -51,6 +52,7 @@ export function startScheduler(client: Client): void {
     activityBatcher.flushAll().catch(noop);
   }, ACTIVITY_TICK_MS);
   setInterval(() => sweepActivityRoles(client).catch(noop), ACTIVITY_ROLES_TICK_MS);
+  setInterval(() => runDailySnapshots().catch(noop), BACKUP_TICK_MS);
   setTimeout(() => {
     fireDueReminders(client).catch(noop);
     closeDuePolls(client).catch(noop);
@@ -62,6 +64,7 @@ export function startScheduler(client: Client): void {
     sweepSlaReminders(client).catch(noop);
     sweepIdleTickets(client).catch(noop);
     sweepActivityRoles(client).catch(noop);
+    runDailySnapshots().catch(noop);
   }, 5_000);
 }
 
@@ -635,4 +638,29 @@ export async function computePruneCandidates(
     notifyDm: policy.notifyDm,
     candidates,
   };
+}
+async function runDailySnapshots(): Promise<void> {
+  let policies;
+  try {
+    policies = await api.listAutoSnapshotPolicies();
+  } catch (err) {
+    if (err instanceof ApiError) {
+      log.warn('listAutoSnapshotPolicies API error', { status: err.status });
+    }
+    return;
+  }
+  if (policies.policies.length === 0) return;
+
+  const label = `auto-${new Date().toISOString().slice(0, 10)}`;
+  for (const policy of policies.policies) {
+    try {
+      await api.createSnapshot(policy.guildId, { label });
+      const { pruned } = await api.pruneSnapshots(policy.guildId, policy.retentionDays);
+      if (pruned > 0) {
+        log.info('Pruned old snapshots', { guildId: policy.guildId, pruned });
+      }
+    } catch (err) {
+      log.warn('Daily snapshot failed', { guildId: policy.guildId, err: String(err) });
+    }
+  }
 }
