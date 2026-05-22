@@ -18,6 +18,7 @@ import { fetchStream } from './integrations/twitch.js';
 import { renderTranscript } from './integrations/ticket-transcript.js';
 import { activityBatcher } from './util/activity-batcher.js';
 import { tickVoiceMinutes } from './events/insights.js';
+import { sweepStarboardDigest, STARBOARD_DIGEST_TICK_MS } from './util/starboard-digest.js';
 
 const REMINDER_TICK_MS = 10_000;
 const POLL_TICK_MS = 30_000;
@@ -73,6 +74,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('backup', () => runDailySnapshots())().catch(noop), BACKUP_TICK_MS);
   setInterval(() => tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop), APPEAL_SLA_TICK_MS);
   setInterval(() => tick('giveaways', () => endDueGiveaways(client))().catch(noop), GIVEAWAY_TICK_MS);
+  setInterval(() => tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop), STARBOARD_DIGEST_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -89,6 +91,7 @@ export function startScheduler(client: Client): void {
     tick('backup', () => runDailySnapshots())().catch(noop);
     tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop);
     tick('giveaways', () => endDueGiveaways(client))().catch(noop);
+    tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop);
   }, 5_000);
 }
 

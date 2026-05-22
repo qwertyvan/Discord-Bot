@@ -117,6 +117,10 @@ import type {
   CreateGiveawayInput,
   EnterGiveawayInput,
   GiveawayStatus,
+  StarboardConfig,
+  UpsertStarboardConfigInput,
+  StarboardEntry,
+  RecordStarInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -969,4 +973,32 @@ export const api = {
     call<Giveaway>(`/guilds/${guildId}/giveaways/${giveawayId}/cancel`, { method: 'POST' }),
   dueGiveaways: (limit = 50) =>
     call<{ giveaways: Giveaway[] }>(`/giveaways/due`, { query: { limit } }),
+  // Starboard
+  getStarboardConfig: (guildId: string) =>
+    call<StarboardConfig>(`/guilds/${guildId}/starboard-config`),
+  upsertStarboardConfig: (guildId: string, body: UpsertStarboardConfigInput) =>
+    call<StarboardConfig>(`/guilds/${guildId}/starboard-config`, { method: 'PUT', body }),
+  listStarboardEntries: (guildId: string, query?: { top?: number; days?: number }) =>
+    call<{ entries: StarboardEntry[] }>(
+      `/guilds/${guildId}/starboard-entries`,
+      query
+        ? {
+            query: {
+              ...(query.top !== undefined ? { top: query.top } : {}),
+              ...(query.days !== undefined ? { days: query.days } : {}),
+            },
+          }
+        : {},
+    ),
+  recordStar: (guildId: string, body: RecordStarInput) =>
+    call<StarboardEntry>(`/guilds/${guildId}/starboard-entries`, { method: 'POST', body }),
+  setStarboardMessageId: (
+    guildId: string,
+    sourceMessageId: string,
+    body: { starboardMessageId: string | null },
+  ) =>
+    call<StarboardEntry>(`/guilds/${guildId}/starboard-entries/${sourceMessageId}`, {
+      method: 'PATCH',
+      body,
+    }),
 };
