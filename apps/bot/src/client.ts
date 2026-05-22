@@ -6,6 +6,7 @@ import { registerWelcomeEvents } from './events/welcome.js';
 import { registerAuditEvents } from './events/audit.js';
 import { registerAutomodEvents } from './events/automod.js';
 import { registerAutoResponseEvents } from './events/auto-response.js';
+import { registerAutoReactionEvents } from './events/auto-reactions.js';
 import { registerLevelingEvents } from './events/leveling.js';
 import { registerMessageActivityEvents } from './events/message-activity.js';
 import { registerTicketActivityEvents } from './events/ticket-activity.js';
@@ -55,6 +56,7 @@ export function createClient(): Client {
   registerAuditEvents(client);
   registerAutomodEvents(client);
   registerAutoResponseEvents(client);
+  registerAutoReactionEvents(client);
   registerLevelingEvents(client);
   registerMessageActivityEvents(client);
   registerTicketActivityEvents(client);

@@ -34,6 +34,7 @@ import { pollsRoutes } from './routes/polls.js';
 import { remindersRoutes } from './routes/reminders.js';
 import { tagsRoutes } from './routes/tags.js';
 import { autoResponsesRoutes } from './routes/auto-responses.js';
+import { autoReactionsRoutes } from './routes/auto-reactions.js';
 import { levelingRoutes } from './routes/leveling.js';
 import { economyRoutes } from './routes/economy.js';
 import { ticketsRoutes } from './routes/tickets.js';
@@ -125,6 +126,7 @@ export async function buildApp() {
   await app.register(remindersRoutes);
   await app.register(tagsRoutes);
   await app.register(autoResponsesRoutes);
+  await app.register(autoReactionsRoutes);
   await app.register(levelingRoutes);
   await app.register(economyRoutes);
   await app.register(ticketsRoutes);

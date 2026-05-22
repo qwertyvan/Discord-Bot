@@ -161,6 +161,9 @@ import type {
   UpdateMemberInviteInput,
   InviteGatedRole,
   UpsertInviteGatedRoleInput,
+  AutoReactionRule,
+  CreateAutoReactionRuleInput,
+  UpdateAutoReactionRuleInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -362,6 +365,18 @@ export const api = {
     call<AutoResponse>(`/guilds/${guildId}/auto-responses/${id}`, { method: 'PATCH', body }),
   deleteAutoResponse: (guildId: string, id: string) =>
     call<void>(`/guilds/${guildId}/auto-responses/${id}`, { method: 'DELETE' }),
+
+  // Auto-reactions
+  listAutoReactionRules: (guildId: string) =>
+    call<{ rules: AutoReactionRule[] }>(`/guilds/${guildId}/auto-reactions`),
+  getEnabledAutoReactionRules: (guildId: string) =>
+    call<{ rules: AutoReactionRule[] }>(`/guilds/${guildId}/auto-reactions/enabled`),
+  createAutoReactionRule: (guildId: string, body: CreateAutoReactionRuleInput) =>
+    call<AutoReactionRule>(`/guilds/${guildId}/auto-reactions`, { method: 'POST', body }),
+  updateAutoReactionRule: (guildId: string, id: string, body: UpdateAutoReactionRuleInput) =>
+    call<AutoReactionRule>(`/guilds/${guildId}/auto-reactions/${id}`, { method: 'PATCH', body }),
+  deleteAutoReactionRule: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/auto-reactions/${id}`, { method: 'DELETE' }),
 
   // Leveling
   getLevelConfig: (guildId: string) => call<LevelConfig>(`/guilds/${guildId}/level-config`),

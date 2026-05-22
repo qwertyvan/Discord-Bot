@@ -92,6 +92,7 @@ model Guild {
   inviteCodes           InviteCode[]
   memberInvites         MemberInvite[]
   inviteGatedRoles      InviteGatedRole[]
+  autoReactionRules     AutoReactionRule[]
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -1684,6 +1685,28 @@ model InviteGatedRole {
 
   @@unique([guildId, inviteCode, roleId])
   @@index([guildId])
+}
+
+// Per-guild auto-reaction rule. When a non-bot message in `channelId` (or any
+// channel if null) matches `pattern` (literal substring or regex per `isRegex`,
+// optionally case-sensitive), the bot reacts with each of `emojis` (unicode or
+// `<a?:name:id>` custom-emoji syntax) in order. Max 20 rules per guild, 3
+// emojis per rule (Discord caps reactions and we throttle to be polite).
+model AutoReactionRule {
+  id            String   @id @default(uuid())
+  guildId       String
+  channelId     String?
+  pattern       String   @db.VarChar(200)
+  isRegex       Boolean  @default(false)
+  caseSensitive Boolean  @default(false)
+  emojis        String[]
+  enabled       Boolean  @default(true)
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, enabled])
 }
 
 // Per-guild data-retention policy. Each *Days field, when set, bounds the

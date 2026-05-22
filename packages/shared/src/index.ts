@@ -11,6 +11,7 @@ export * from './poll.js';
 export * from './reminder.js';
 export * from './tag.js';
 export * from './auto-response.js';
+export * from './auto-reactions.js';
 export * from './leveling.js';
 export * from './economy.js';
 export * from './tickets.js';
