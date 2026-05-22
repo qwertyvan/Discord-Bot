@@ -129,6 +129,13 @@ import type {
   CreateFeedSubscriptionInput,
   FeedKind,
   FeedSubscription,
+  ForumAutoTag,
+  UpsertForumAutoTagInput,
+  StaleThreadPolicy,
+  UpsertStalePolicyInput,
+  StageScheduledEvent,
+  CreateStageEventInput,
+  StageEventStatus,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1051,4 +1058,38 @@ export const api = {
         ...(query?.limit !== undefined ? { limit: query.limit } : {}),
       },
     }),
+  // Forum auto-tag rules
+  listForumTags: (guildId: string) =>
+    call<{ tags: ForumAutoTag[] }>(`/guilds/${guildId}/forum-tags`),
+  createForumTag: (guildId: string, body: UpsertForumAutoTagInput) =>
+    call<ForumAutoTag>(`/guilds/${guildId}/forum-tags`, { method: 'POST', body }),
+  deleteForumTag: (guildId: string, tagId: string) =>
+    call<void>(`/guilds/${guildId}/forum-tags/${tagId}`, { method: 'DELETE' }),
+
+  // Stale thread policy
+  getStaleThreadPolicy: (guildId: string) =>
+    call<StaleThreadPolicy>(`/guilds/${guildId}/stale-thread-policy`),
+  upsertStaleThreadPolicy: (guildId: string, body: UpsertStalePolicyInput) =>
+    call<StaleThreadPolicy>(`/guilds/${guildId}/stale-thread-policy`, { method: 'PUT', body }),
+
+  // Stage scheduled events
+  listStageEvents: (
+    guildId: string,
+    query?: { status?: StageEventStatus; limit?: number },
+  ) =>
+    call<{ events: StageScheduledEvent[] }>(
+      `/guilds/${guildId}/stage-events`,
+      query ? { query } : {},
+    ),
+  createStageEvent: (guildId: string, body: CreateStageEventInput) =>
+    call<StageScheduledEvent>(`/guilds/${guildId}/stage-events`, { method: 'POST', body }),
+  getStageEvent: (guildId: string, eventId: string) =>
+    call<StageScheduledEvent>(`/guilds/${guildId}/stage-events/${eventId}`),
+  updateStageEventStatus: (guildId: string, eventId: string, status: StageEventStatus) =>
+    call<StageScheduledEvent>(`/guilds/${guildId}/stage-events/${eventId}`, {
+      method: 'PATCH',
+      body: { status },
+    }),
+  deleteStageEvent: (guildId: string, eventId: string) =>
+    call<void>(`/guilds/${guildId}/stage-events/${eventId}`, { method: 'DELETE' }),
 };

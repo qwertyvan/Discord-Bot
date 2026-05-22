@@ -58,6 +58,7 @@ import { musicRoutes } from './routes/music.js';
 import { giveawaysRoutes } from './routes/giveaways.js';
 import { starboardRoutes } from './routes/starboard.js';
 import { countersRoutes } from './routes/counters.js';
+import { forumStageRoutes } from './routes/forum-stage.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -143,6 +144,7 @@ export async function buildApp() {
   await app.register(giveawaysRoutes);
   await app.register(starboardRoutes);
   await app.register(countersRoutes);
+  await app.register(forumStageRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);
