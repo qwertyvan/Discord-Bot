@@ -16,6 +16,10 @@ const KIND_CHOICES: Array<{ name: string; value: FeedKind }> = [
   { name: 'Reddit', value: 'reddit' },
   { name: 'Bluesky', value: 'bluesky' },
   { name: 'Mastodon', value: 'mastodon' },
+  { name: 'Kick', value: 'kick' },
+  { name: 'Trovo', value: 'trovo' },
+  { name: 'Steam price drops', value: 'steam' },
+  { name: 'GitHub star milestones', value: 'github-stars' },
 ];
 
 const IDENTIFIER_HELP: Record<FeedKind, string> = {
@@ -23,12 +27,18 @@ const IDENTIFIER_HELP: Record<FeedKind, string> = {
   reddit: 'subreddit name (e.g. typescript)',
   bluesky: 'handle (e.g. alice.bsky.social)',
   mastodon: '@user@instance (e.g. @mastodon@mastodon.social)',
+  kick: 'channel slug (e.g. xqc)',
+  trovo: 'channel username (e.g. some_user)',
+  steam: 'app id (e.g. 730 for CS2)',
+  'github-stars': 'owner/repo (e.g. anthropics/claude-code)',
 };
 
 export const feeds: SlashCommand = {
   data: new SlashCommandBuilder()
     .setName('feeds')
-    .setDescription('Manage public feed subscriptions (YouTube, Reddit, Bluesky, Mastodon).')
+    .setDescription(
+      'Manage public feed subscriptions (YouTube, Reddit, Bluesky, Mastodon, Kick, Trovo, Steam, GitHub stars).',
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setContexts(0)
     .addSubcommand((s) =>
@@ -169,6 +179,20 @@ function normalizeIdentifier(kind: FeedKind, raw: string): string {
   }
   if (kind === 'mastodon') {
     return trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
+  }
+  if (kind === 'kick' || kind === 'trovo') {
+    return trimmed.toLowerCase();
+  }
+  if (kind === 'github-stars') {
+    // Allow pasting a full repo URL.
+    const m = trimmed.match(/^(?:https?:\/\/github\.com\/)?([^/\s]+)\/([^/\s#?]+)/i);
+    if (m && m[1] && m[2]) return `${m[1]}/${m[2].replace(/\.git$/i, '')}`;
+    return trimmed;
+  }
+  if (kind === 'steam') {
+    // Accept either bare id or a store URL.
+    const m = trimmed.match(/(?:^|\/app\/)([0-9]{1,10})/);
+    return m?.[1] ?? trimmed;
   }
   return trimmed;
 }

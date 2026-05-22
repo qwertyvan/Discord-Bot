@@ -24,11 +24,24 @@ export interface FeedSubLite {
 
 export type FeedHandler = (sub: FeedSubLite) => Promise<FeedPollResult>;
 
-export const FEED_KINDS: readonly FeedKind[] = ['youtube', 'reddit', 'bluesky', 'mastodon'];
+export const FEED_KINDS: readonly FeedKind[] = [
+  'youtube',
+  'reddit',
+  'bluesky',
+  'mastodon',
+  'kick',
+  'trovo',
+  'steam',
+  'github-stars',
+];
 
 export const FEED_COLORS: Record<FeedKind, number> = {
   youtube: 0xff0000,
   reddit: 0xff4500,
   bluesky: 0x0085ff,
   mastodon: 0x6364ff,
+  kick: 0x53fc18,
+  trovo: 0x199b16,
+  steam: 0x1b2838,
+  'github-stars': 0x24292e,
 };
