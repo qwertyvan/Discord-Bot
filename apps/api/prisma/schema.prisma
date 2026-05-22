@@ -69,6 +69,8 @@ model Guild {
   warningLadderSteps    WarningLadderStep[]
   appeals               Appeal[]
   appealSlaConfig       AppealSlaConfig?
+  outboundWebhooks      OutboundWebhook[]
+  publicApiTokens       PublicApiToken[]
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -388,6 +390,68 @@ model AppealSlaConfig {
   escalateChannelId String?
 
   guild             Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Per-guild outbound webhook subscription. The API enqueues a
+// WebhookDelivery row for each active webhook subscribed to an event type
+// when dispatchEvent() is called; a background worker drains the queue and
+// signs deliveries with HMAC-SHA256.
+model OutboundWebhook {
+  id              String   @id @default(uuid())
+  guildId         String
+  url             String   @db.VarChar(2048)
+  // Envelope-encrypted via crypto.ts (v1:...). HMAC key for outgoing deliveries.
+  secretEncrypted String   @db.VarChar(2048)
+  // Subscribed event names (e.g. "modaction.created", "ticket.opened").
+  events          String[]
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  lastDeliveryAt  DateTime?
+  lastStatus      Int?
+
+  guild           Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  deliveries      WebhookDelivery[]
+
+  @@index([guildId, active])
+}
+
+// A pending or completed outbound webhook delivery. Status 0 = queued,
+// 2xx/3xx = delivered, 4xx/5xx = transient failure (retried with backoff),
+// -1 = permanently failed (max attempts exceeded).
+model WebhookDelivery {
+  id           String   @id @default(uuid())
+  webhookId    String
+  eventType    String   @db.VarChar(64)
+  payload      Json
+  status       Int      @default(0)
+  attemptCount Int      @default(0)
+  deliveredAt  DateTime?
+  nextRetryAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  webhook      OutboundWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, deliveredAt])
+  @@index([nextRetryAt])
+}
+
+// Per-guild public API token. The plaintext is only returned once on
+// creation; we persist a SHA-256 hash so requests are looked up by hash.
+// Scopes (e.g. "stats:read") gate access to /public/* routes.
+model PublicApiToken {
+  id          String   @id @default(uuid())
+  guildId     String
+  name        String   @db.VarChar(64)
+  tokenHash   String   @db.VarChar(128) @unique
+  scopes      String[]
+  createdBy   String
+  createdAt   DateTime @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every

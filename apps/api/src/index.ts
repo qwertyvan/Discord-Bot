@@ -1,4 +1,5 @@
 import { buildApp } from './app.js';
+import { startWebhookWorker } from './workers/webhook-worker.js';
 
 async function main(): Promise<void> {
   const app = await buildApp();
@@ -9,8 +10,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const stopWebhookWorker = startWebhookWorker(app);
+
   const shutdown = async (signal: NodeJS.Signals) => {
     app.log.info({ signal }, 'Shutting down');
+    stopWebhookWorker();
     await app.close();
     process.exit(0);
   };

@@ -16,6 +16,7 @@ import discordOAuthPlugin from './plugins/discord-oauth.js';
 import csrfPlugin from './plugins/csrf.js';
 import rateLimitPlugin from './plugins/rate-limit.js';
 import adminAuditPlugin from './plugins/admin-audit.js';
+import publicTokenAuthPlugin from './plugins/public-token-auth.js';
 import { healthRoutes } from './routes/health.js';
 import { guildsRoutes } from './routes/guilds.js';
 import { modActionsRoutes } from './routes/mod-actions.js';
@@ -47,6 +48,8 @@ import { activityRolesRoutes } from './routes/activity-roles.js';
 import { minigamesRoutes } from './routes/minigames.js';
 import { backupRoutes } from './routes/backup.js';
 import { appealsRoutes } from './routes/appeals.js';
+import { webhooksOutRoutes } from './routes/webhooks-out.js';
+import { publicRoutes } from './routes/public.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -82,6 +85,7 @@ export async function buildApp() {
   await app.register(rateLimitPlugin);
   await app.register(csrfPlugin);
   await app.register(adminAuditPlugin);
+  await app.register(publicTokenAuthPlugin);
 
   await app.register(healthRoutes);
   await app.register(guildsRoutes);
@@ -114,6 +118,8 @@ export async function buildApp() {
   await app.register(minigamesRoutes);
   await app.register(backupRoutes);
   await app.register(appealsRoutes);
+  await app.register(webhooksOutRoutes);
+  await app.register(publicRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);

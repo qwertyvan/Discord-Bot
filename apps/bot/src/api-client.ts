@@ -101,6 +101,12 @@ import type {
   UpsertAppealSlaConfigInput,
   UpsertLadderStepInput,
   WarningLadderStep,
+  OutboundWebhook,
+  CreateOutboundWebhookInput,
+  UpdateOutboundWebhookInput,
+  WebhookDelivery,
+  PublicApiToken,
+  CreatePublicApiTokenInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -856,4 +862,41 @@ export const api = {
       `/appeals/stale`,
       { query: { limit } },
     ),
+  // Outbound webhooks
+  listOutboundWebhooks: (guildId: string) =>
+    call<{ webhooks: OutboundWebhook[] }>(`/guilds/${guildId}/webhooks`),
+  createOutboundWebhook: (guildId: string, body: CreateOutboundWebhookInput) =>
+    call<OutboundWebhook & { secret: string }>(`/guilds/${guildId}/webhooks`, {
+      method: 'POST',
+      body,
+    }),
+  updateOutboundWebhook: (
+    guildId: string,
+    id: string,
+    body: UpdateOutboundWebhookInput,
+  ) =>
+    call<OutboundWebhook>(`/guilds/${guildId}/webhooks/${id}`, { method: 'PATCH', body }),
+  deleteOutboundWebhook: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/webhooks/${id}`, { method: 'DELETE' }),
+  listWebhookDeliveries: (guildId: string, id: string, limit = 25) =>
+    call<{ deliveries: WebhookDelivery[] }>(
+      `/guilds/${guildId}/webhooks/${id}/deliveries`,
+      { query: { limit } },
+    ),
+  testOutboundWebhook: (guildId: string, id: string) =>
+    call<{ enqueued: boolean; deliveryId: string }>(
+      `/guilds/${guildId}/webhooks/${id}/test`,
+      { method: 'POST' },
+    ),
+
+  // Public API tokens
+  listApiTokens: (guildId: string) =>
+    call<{ tokens: PublicApiToken[] }>(`/guilds/${guildId}/api-tokens`),
+  createApiToken: (guildId: string, body: CreatePublicApiTokenInput) =>
+    call<PublicApiToken & { token: string }>(`/guilds/${guildId}/api-tokens`, {
+      method: 'POST',
+      body,
+    }),
+  revokeApiToken: (guildId: string, tokenId: string) =>
+    call<void>(`/guilds/${guildId}/api-tokens/${tokenId}`, { method: 'DELETE' }),
 };

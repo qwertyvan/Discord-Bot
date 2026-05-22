@@ -8,6 +8,7 @@ import {
 } from '@discord-bot/shared';
 import { HttpError } from '../errors.js';
 import { createModAction, serializeModAction } from '../services/mod-actions.js';
+import { dispatchEvent } from '../webhook-dispatch.js';
 
 const ListParams = z.object({ guildId: SnowflakeSchema });
 const ItemParams = z.object({ guildId: SnowflakeSchema, actionId: z.string().uuid() });
@@ -24,8 +25,12 @@ export const modActionsRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const { guildId } = req.params;
       const result = await createModAction(app.prisma, guildId, req.body);
+      const serialized = serializeModAction(result.action);
+      dispatchEvent(app.prisma, guildId, 'modaction.created', { action: serialized }).catch(
+        (err) => req.log.warn({ err }, 'dispatchEvent(modaction.created) failed'),
+      );
       return {
-        action: serializeModAction(result.action),
+        action: serialized,
         triggeredEscalation: result.triggeredEscalation,
       };
     },
