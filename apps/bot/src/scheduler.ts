@@ -43,6 +43,7 @@ const ACTIVITY_TICK_MS = 60_000;
 const ACTIVITY_ROLES_TICK_MS = 24 * 60 * 60_000;
 const BACKUP_TICK_MS = 24 * 60 * 60_000;
 const APPEAL_SLA_TICK_MS = 60 * 60_000; // hourly
+const MILESTONES_TICK_MS = 24 * 60 * 60_000; // daily
 
 const HEARTBEAT_TICK_MS = 30_000;
 
@@ -89,6 +90,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('stale-threads', () => sweepStaleThreads(client))().catch(noop), STALE_THREAD_TICK_MS);
   setInterval(() => tick('stage-events', () => tickStageEvents(client))().catch(noop), STAGE_TICK_MS);
   setInterval(() => tick('anti-raid', () => sweepAntiRaid(client))().catch(noop), ANTI_RAID_TICK_MS);
+  setInterval(() => tick('milestones', () => sweepMemberMilestones(client))().catch(noop), MILESTONES_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -112,6 +114,7 @@ export function startScheduler(client: Client): void {
     tick('stale-threads', () => sweepStaleThreads(client))().catch(noop);
     tick('stage-events', () => tickStageEvents(client))().catch(noop);
     tick('anti-raid', () => sweepAntiRaid(client))().catch(noop);
+    tick('milestones', () => sweepMemberMilestones(client))().catch(noop);
   }, 5_000);
 }
 
@@ -1114,6 +1117,199 @@ async function tickStageEvents(client: Client): Promise<void> {
       }
     }
   }
+}
+
+/**
+ * Daily member-milestone sweep. For each guild whose MilestoneConfig is
+ * enabled:
+ *   1. Joinaversary — members whose joinedAt month+day matches today and
+ *      whose joinedAt year is strictly older than the current year get
+ *      a celebratory embed in joinaversaryChannelId. Currency reward is
+ *      paid out via the economy api when configured.
+ *   2. Tenure roles — every TenureRoleRule is reconciled: members whose
+ *      (now - joinedAt) ≥ daysRequired and who don't yet hold the role
+ *      get it granted. The MilestoneAward ledger is consulted to keep
+ *      this idempotent across ticks.
+ */
+export async function sweepMemberMilestones(client: Client): Promise<void> {
+  let enabled;
+  try {
+    enabled = await api.listEnabledMilestoneConfigs();
+  } catch (err) {
+    if (err instanceof ApiError) {
+      log.warn('listEnabledMilestoneConfigs API error', { status: err.status });
+    }
+    return;
+  }
+  if (enabled.configs.length === 0) return;
+
+  const today = new Date();
+  const todayMonth = today.getUTCMonth() + 1;
+  const todayDay = today.getUTCDate();
+  const todayYear = today.getUTCFullYear();
+
+  for (const cfg of enabled.configs) {
+    const guild = client.guilds.cache.get(cfg.guildId);
+    if (!guild) continue;
+
+    // Make sure members are cached so joinedAt is populated.
+    await guild.members.fetch().catch(() => {});
+
+    let tenureRules: Awaited<ReturnType<typeof api.listTenureRoles>>['rules'] = [];
+    try {
+      tenureRules = (await api.listTenureRoles(cfg.guildId)).rules;
+    } catch (err) {
+      log.warn('listTenureRoles failed', { guildId: cfg.guildId, err: String(err) });
+    }
+
+    for (const member of guild.members.cache.values()) {
+      if (member.user.bot) continue;
+      const joinedAt = member.joinedAt;
+      if (!joinedAt) continue;
+
+      // ── Joinaversary ──
+      const joinedMonth = joinedAt.getUTCMonth() + 1;
+      const joinedDay = joinedAt.getUTCDate();
+      const joinedYear = joinedAt.getUTCFullYear();
+      if (
+        cfg.joinaversaryChannelId &&
+        joinedMonth === todayMonth &&
+        joinedDay === todayDay &&
+        joinedYear < todayYear
+      ) {
+        const years = todayYear - joinedYear;
+        await fireJoinaversary(guild, member, cfg, years).catch((err) =>
+          log.warn('joinaversary failed', {
+            guildId: cfg.guildId,
+            userId: member.id,
+            err: String(err),
+          }),
+        );
+      }
+
+      // ── Tenure roles ──
+      if (tenureRules.length > 0) {
+        const tenureMs = Date.now() - joinedAt.getTime();
+        const tenureDays = Math.floor(tenureMs / 86_400_000);
+        for (const rule of tenureRules) {
+          if (tenureDays < rule.daysRequired) continue;
+          if (member.roles.cache.has(rule.roleId)) continue;
+          // Idempotency: don't re-grant if we already awarded this rule.
+          let already;
+          try {
+            already = await api.listMilestoneAwards(cfg.guildId, {
+              userId: member.id,
+              kind: 'tenure',
+              limit: 50,
+            });
+          } catch (err) {
+            log.warn('listMilestoneAwards (tenure) failed', {
+              guildId: cfg.guildId,
+              userId: member.id,
+              err: String(err),
+            });
+            continue;
+          }
+          const seen = already.awards.some(
+            (a) => (a.payload as { ruleId?: string } | null)?.ruleId === rule.id,
+          );
+          if (seen) continue;
+          try {
+            await member.roles.add(rule.roleId, `Tenure role (${rule.daysRequired}d)`);
+            await api.recordMilestoneAward(cfg.guildId, {
+              userId: member.id,
+              kind: 'tenure',
+              payload: { ruleId: rule.id, daysRequired: rule.daysRequired },
+            });
+          } catch (err) {
+            log.warn('tenure role grant failed', {
+              guildId: cfg.guildId,
+              userId: member.id,
+              roleId: rule.roleId,
+              err: String(err),
+            });
+          }
+        }
+      }
+    }
+  }
+}
+
+async function fireJoinaversary(
+  guild: Guild,
+  member: GuildMember,
+  cfg: { guildId: string; joinaversaryChannelId: string | null; joinaversaryTemplate: string | null; joinaversaryReward: number },
+  years: number,
+): Promise<void> {
+  if (!cfg.joinaversaryChannelId) return;
+  // Idempotency: skip if we already fired this calendar year.
+  try {
+    const already = await api.listMilestoneAwards(cfg.guildId, {
+      userId: member.id,
+      kind: 'joinaversary',
+      limit: 20,
+    });
+    const yearNow = new Date().getUTCFullYear();
+    const seen = already.awards.some(
+      (a) => (a.payload as { year?: number } | null)?.year === yearNow,
+    );
+    if (seen) return;
+  } catch {
+    // Fall through — better to risk a double-post than skip everyone on a
+    // transient API blip.
+  }
+
+  const channel = guild.channels.cache.get(cfg.joinaversaryChannelId);
+  if (!channel || channel.type !== ChannelType.GuildText) return;
+
+  const template =
+    cfg.joinaversaryTemplate ??
+    '🎉 Happy {years}-year joinaversary, {user}! Thanks for being part of **{server}**.';
+  const content = template
+    .replaceAll('{user}', `<@${member.id}>`)
+    .replaceAll('{username}', member.displayName)
+    .replaceAll('{server}', guild.name)
+    .replaceAll('{years}', String(years));
+
+  const embed = new EmbedBuilder()
+    .setTitle('🎂 Joinaversary')
+    .setDescription(content)
+    .setColor(0xf59e0b)
+    .setThumbnail(member.user.displayAvatarURL({ size: 256, extension: 'png' }))
+    .setTimestamp(new Date());
+
+  await (channel as TextChannel)
+    .send({
+      embeds: [embed],
+      allowedMentions: { users: [member.id] },
+    })
+    .catch((err) => log.warn('joinaversary send failed', { guildId: guild.id, err: String(err) }));
+
+  if (cfg.joinaversaryReward > 0) {
+    await api
+      .adjustBalance(guild.id, member.id, cfg.joinaversaryReward)
+      .catch((err) =>
+        log.warn('joinaversary reward failed', {
+          guildId: guild.id,
+          userId: member.id,
+          err: String(err),
+        }),
+      );
+  }
+
+  await api
+    .recordMilestoneAward(guild.id, {
+      userId: member.id,
+      kind: 'joinaversary',
+      payload: { year: new Date().getUTCFullYear(), years },
+    })
+    .catch((err) =>
+      log.warn('joinaversary recordAward failed', {
+        guildId: guild.id,
+        userId: member.id,
+        err: String(err),
+      }),
+    );
 }
 
 /**
