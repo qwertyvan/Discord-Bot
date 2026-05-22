@@ -98,6 +98,8 @@ model Guild {
   milestoneConfig       MilestoneConfig?
   tenureRoleRules       TenureRoleRule[]
   milestoneAwards       MilestoneAward[]
+  onboardingForms       OnboardingForm[]
+  applications          Application[]
 }
 
 // Per-guild quote-board settings. `savePermission` gates who can right-click
@@ -1813,4 +1815,53 @@ model RetentionPolicy {
   updatedAt       DateTime @updatedAt @default(now())
 
   guild           Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Per-guild application form (e.g. "Staff application", "Partner application").
+// Admins author a form once, define up to 5 short/paragraph questions, and
+// members run /apply <slug> to fill out a Discord modal. Submissions land in
+// `reviewChannelId` as an embed with Approve/Reject buttons.
+model OnboardingForm {
+  id               String   @id @default(uuid())
+  guildId          String
+  slug             String   @db.VarChar(48)
+  name             String   @db.VarChar(120)
+  description      String?  @db.VarChar(500)
+  // [{ label, placeholder?, required, maxLength, style: 'short'|'paragraph' }]
+  questions        Json
+  reviewChannelId  String?
+  approveRoleId    String?
+  approveDmMessage String?  @db.VarChar(2000)
+  rejectDmTemplate String?  @db.VarChar(2000)
+  enabled          Boolean  @default(true)
+  createdBy        String
+  createdAt        DateTime @default(now())
+
+  guild        Guild         @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@unique([guildId, slug])
+  @@index([guildId])
+}
+
+// One member submission against an OnboardingForm. The bot persists the
+// answers verbatim ({label: answer}) and tracks review state.
+model Application {
+  id              String    @id @default(uuid())
+  guildId         String
+  formId          String
+  userId          String
+  // { [questionLabel]: answer } captured from the Discord modal at submit time.
+  answers         Json
+  status          String    @default("pending") @db.VarChar(16)
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewNote      String?   @db.VarChar(500)
+  reviewMessageId String?
+  createdAt       DateTime  @default(now())
+
+  guild Guild          @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  form  OnboardingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status, createdAt])
 }

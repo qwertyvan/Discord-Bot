@@ -1,4 +1,5 @@
 import type {
+  AutocompleteInteraction,
   ChatInputCommandInteraction,
   ContextMenuCommandBuilder,
   MessageContextMenuCommandInteraction,
@@ -16,6 +17,8 @@ export type SlashCommandData =
 export interface SlashCommand {
   data: SlashCommandData;
   execute(interaction: ChatInputCommandInteraction): Promise<void>;
+  // Optional autocomplete handler for string options marked .setAutocomplete(true).
+  autocomplete?(interaction: AutocompleteInteraction): Promise<void>;
 }
 
 // Right-click "context menu" commands (Message and User targets). These

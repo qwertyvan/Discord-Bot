@@ -67,6 +67,7 @@ import { privacyRoutes } from './routes/privacy.js';
 import { invitesRoutes } from './routes/invites.js';
 import { quotesRoutes } from './routes/quotes.js';
 import { milestonesRoutes } from './routes/milestones.js';
+import { onboardingFormsRoutes } from './routes/onboarding-forms.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -161,6 +162,7 @@ export async function buildApp() {
   await app.register(invitesRoutes);
   await app.register(quotesRoutes);
   await app.register(milestonesRoutes);
+  await app.register(onboardingFormsRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);
