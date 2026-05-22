@@ -17,6 +17,7 @@ export * from './tickets.js';
 export * from './integrations.js';
 export * from './scheduled.js';
 export * from './custom-command.js';
+export * from './community.js';
 export * from './user.js';
 export * from './errors.js';
 export * from './permissions.js';

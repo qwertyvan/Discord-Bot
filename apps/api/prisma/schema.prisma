@@ -46,7 +46,60 @@ model Guild {
   userBirthdays        UserBirthday[]
   events               Event[]
   customCommands       CustomCommand[]
+  stickyMessages       StickyMessage[]
+  suggestions          Suggestion[]
   caseCounter          CaseCounter?
+}
+
+// Channel-pinned "sticky" message: the bot reposts it to the bottom every
+// `throttleMessages` user messages. One sticky per channel max.
+model StickyMessage {
+  guildId          String
+  channelId        String   @unique
+  content          String   @db.VarChar(2000)
+  // The currently-posted message id in Discord so the bot can delete the
+  // previous instance before reposting.
+  lastMessageId    String?
+  throttleMessages Int      @default(5)
+  enabled          Boolean  @default(true)
+  updatedAt        DateTime @updatedAt @default(now())
+
+  guild            Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, channelId])
+  @@index([guildId])
+}
+
+model Suggestion {
+  id          String           @id @default(uuid())
+  guildId     String
+  channelId   String
+  messageId   String?
+  authorId    String
+  content     String           @db.VarChar(2000)
+  // 'open' | 'accepted' | 'rejected' | 'implemented'
+  status      String           @default("open") @db.VarChar(16)
+  reviewNote  String?          @db.VarChar(500)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  guild       Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  votes       SuggestionVote[]
+
+  @@index([guildId, status, createdAt])
+}
+
+model SuggestionVote {
+  suggestionId  String
+  userId        String
+  // 1 = upvote, -1 = downvote
+  vote          Int
+  createdAt     DateTime @default(now())
+
+  suggestion    Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+
+  @@id([suggestionId, userId])
 }
 
 model ScheduledAnnouncement {
