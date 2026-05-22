@@ -1,5 +1,7 @@
 import { autoresponse } from './autoresponse.js';
 import { avatar } from './avatar.js';
+import { color } from './color.js';
+import { counter } from './counter.js';
 import { customCommand } from './custom-command.js';
 import { poll } from './poll.js';
 import { preview } from './preview.js';
@@ -28,4 +30,6 @@ export const utilityCommands = [
   translate,
   shorten,
   customCommand,
+  counter,
+  color,
 ];

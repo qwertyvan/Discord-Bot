@@ -51,6 +51,8 @@ model Guild {
   giveaways            Giveaway[]
   starboardConfig      StarboardConfig?
   starboardEntries     StarboardEntry[]
+  counterChannels      CounterChannel[]
+  vanityRoles          VanityRole[]
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
@@ -491,6 +493,42 @@ model MusicTrack {
   queue MusicQueue @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
 
   @@index([guildId, position])
+}
+
+// Voice/text channel whose name is periodically rewritten to reflect a live
+// guild statistic (member count, online count, boosts, etc.). Discord
+// rate-limits channel renames at 2 per 10 minutes; the bot scheduler ticks
+// every 5 minutes and tolerates failed renames.
+model CounterChannel {
+  guildId   String
+  channelId String   @unique
+  // 'members' | 'humans' | 'bots' | 'online' | 'boosts'
+  type      String   @db.VarChar(16)
+  template  String   @default("Members: {count}") @db.VarChar(64)
+  updatedAt DateTime @updatedAt
+
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+// Per-guild catalogue of self-service vanity roles (typically "color" roles).
+// /color pick swaps the user's existing color role for the chosen one;
+// mutual exclusivity is enforced per kind.
+model VanityRole {
+  id        String   @id @default(uuid())
+  guildId   String
+  roleId    String
+  name      String   @db.VarChar(64)
+  // 'color' | 'badge'
+  kind      String   @db.VarChar(16)
+  hexColor  String?  @db.VarChar(7)
+  emoji     String?  @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, kind])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every
