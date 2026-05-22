@@ -1,8 +1,11 @@
 import {
   ChannelType,
   EmbedBuilder,
+  PermissionFlagsBits,
   type APIEmbed,
   type Client,
+  type Guild,
+  type GuildMember,
   type TextChannel,
 } from 'discord.js';
 import { api, ApiError } from './api-client.js';
@@ -26,6 +29,7 @@ const SLA_TICK_MS = 60_000;
 const IDLE_TICK_MS = 5 * 60_000;
 const VOICE_XP_TICK_MS = 60_000;
 const ACTIVITY_TICK_MS = 60_000;
+const ACTIVITY_ROLES_TICK_MS = 24 * 60 * 60_000;
 
 export function startScheduler(client: Client): void {
   setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
@@ -46,6 +50,7 @@ export function startScheduler(client: Client): void {
     }
     activityBatcher.flushAll().catch(noop);
   }, ACTIVITY_TICK_MS);
+  setInterval(() => sweepActivityRoles(client).catch(noop), ACTIVITY_ROLES_TICK_MS);
   setTimeout(() => {
     fireDueReminders(client).catch(noop);
     closeDuePolls(client).catch(noop);
@@ -56,6 +61,7 @@ export function startScheduler(client: Client): void {
     fireBirthdays(client).catch(noop);
     sweepSlaReminders(client).catch(noop);
     sweepIdleTickets(client).catch(noop);
+    sweepActivityRoles(client).catch(noop);
   }, 5_000);
 }
 
@@ -490,4 +496,143 @@ async function awardActiveVoiceXp(client: Client): Promise<void> {
       });
     }
   }
+}
+/**
+ * Daily reconciliation of activity-role rules across every guild the bot
+ * is in. For each enabled rule we pull the member-activity rows over the
+ * configured window and grant or revoke the role accordingly. Prune is
+ * intentionally NOT performed here — it runs only via `/prune run`.
+ */
+async function sweepActivityRoles(client: Client): Promise<void> {
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      await reconcileGuildActivityRoles(guild);
+    } catch (err) {
+      log.warn('activity-role sweep failed', { guildId: guild.id, err: String(err) });
+    }
+  }
+}
+
+async function reconcileGuildActivityRoles(guild: Guild): Promise<void> {
+  let rules;
+  try {
+    rules = (await api.listActivityRules(guild.id)).rules.filter((r) => r.enabled);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return;
+    log.warn('listActivityRules failed', { guildId: guild.id, err: String(err) });
+    return;
+  }
+  if (rules.length === 0) return;
+
+  // Pull the broadest window so we only hit the API once per guild, then
+  // filter per-rule below using each rule's windowDays.
+  const maxWindow = Math.max(...rules.map((r) => r.windowDays));
+  let members;
+  try {
+    members = (await api.listMemberActivity(guild.id, { sinceDays: maxWindow, limit: 5000 }))
+      .members;
+  } catch (err) {
+    log.warn('listMemberActivity failed', { guildId: guild.id, err: String(err) });
+    return;
+  }
+  const activityByUser = new Map(members.map((m) => [m.userId, m]));
+
+  // Make sure every potential target is in cache so member.roles works.
+  await guild.members.fetch().catch(() => {});
+
+  for (const rule of rules) {
+    const cutoffMs = Date.now() - rule.windowDays * 86_400_000;
+    for (const member of guild.members.cache.values()) {
+      if (member.user.bot) continue;
+      try {
+        const activity = activityByUser.get(member.id);
+        const inWindow =
+          activity &&
+          new Date(activity.lastActiveAt).getTime() >= cutoffMs;
+        const messages = inWindow ? activity.messages : 0;
+        const voiceMinutes = inWindow ? activity.voiceMinutes : 0;
+        const meets =
+          messages >= rule.minMessages && voiceMinutes >= rule.minVoiceMinutes;
+        const has = member.roles.cache.has(rule.roleId);
+
+        if (rule.action === 'grant') {
+          if (meets && !has) {
+            await member.roles.add(rule.roleId, 'Activity-role grant');
+          } else if (!meets && has) {
+            await member.roles.remove(rule.roleId, 'Activity-role grant lost');
+          }
+        } else {
+          // 'revoke': remove the role when the activity floor is met
+          // (i.e. an opt-in "minimum-activity demotion" gate).
+          if (meets && has) {
+            await member.roles.remove(rule.roleId, 'Activity-role revoke');
+          }
+        }
+      } catch (err) {
+        log.warn('activity-role apply failed', {
+          guildId: guild.id,
+          userId: member.id,
+          roleId: rule.roleId,
+          err: String(err),
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Compute prune candidates for a guild using the bot's local member cache
+ * and the activity table. Used by `/prune preview` and `/prune run`.
+ * Skips the guild owner, anyone with ManageGuild, anyone holding an
+ * excluded role, anyone active inside the inactive-days window, and bots.
+ */
+export interface PruneCandidate {
+  member: GuildMember;
+  lastActiveAt: Date | null;
+}
+
+export async function computePruneCandidates(
+  guild: Guild,
+): Promise<{
+  enabled: boolean;
+  inactiveDays: number;
+  notifyDm: boolean;
+  candidates: PruneCandidate[];
+}> {
+  const policy = await api.getPrunePolicy(guild.id);
+  await guild.members.fetch().catch(() => {});
+
+  // Build a lookup of every recently-active member so we can quickly skip
+  // anyone who's *not* a candidate.
+  const recent = new Map<string, Date>();
+  try {
+    const rows = await api.listMemberActivity(guild.id, {
+      sinceDays: policy.inactiveDays,
+      limit: 5000,
+    });
+    for (const r of rows.members) {
+      recent.set(r.userId, new Date(r.lastActiveAt));
+    }
+  } catch (err) {
+    log.warn('prune listMemberActivity failed', { guildId: guild.id, err: String(err) });
+  }
+
+  const excluded = new Set(policy.excludeRoleIds);
+  const candidates: PruneCandidate[] = [];
+
+  for (const member of guild.members.cache.values()) {
+    if (member.user.bot) continue;
+    if (member.id === guild.ownerId) continue;
+    if (member.permissions.has(PermissionFlagsBits.ManageGuild)) continue;
+    if (member.roles.cache.some((r) => excluded.has(r.id))) continue;
+    if (recent.has(member.id)) continue;
+    candidates.push({ member, lastActiveAt: null });
+  }
+
+  return {
+    enabled: policy.enabled,
+    inactiveDays: policy.inactiveDays,
+    notifyDm: policy.notifyDm,
+    candidates,
+  };
 }

@@ -69,6 +69,13 @@ import type {
   UpsertTtsConfigInput,
   ActivityEventsBatchInput,
   InsightsSummary,
+  ActivityRoleRule,
+  UpsertActivityRoleRuleInput,
+  InactivityPrunePolicy,
+  UpsertPolicyInput,
+  MemberActivity,
+  MemberActivityBatchEntry,
+  PruneCandidate,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -654,5 +661,63 @@ export const api = {
     call<{ ok: boolean }>(`/guilds/${guildId}/activity-events`, {
       method: 'POST',
       body,
+    }),
+  // Activity-role rules
+  listActivityRules: (guildId: string) =>
+    call<{ rules: ActivityRoleRule[] }>(`/guilds/${guildId}/activity-rules`),
+  createActivityRule: (guildId: string, body: UpsertActivityRoleRuleInput) =>
+    call<ActivityRoleRule>(`/guilds/${guildId}/activity-rules`, {
+      method: 'POST',
+      body,
+    }),
+  updateActivityRule: (
+    guildId: string,
+    ruleId: string,
+    body: Partial<UpsertActivityRoleRuleInput>,
+  ) =>
+    call<ActivityRoleRule>(`/guilds/${guildId}/activity-rules/${ruleId}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteActivityRule: (guildId: string, ruleId: string) =>
+    call<void>(`/guilds/${guildId}/activity-rules/${ruleId}`, { method: 'DELETE' }),
+
+  // Inactivity prune policy
+  getPrunePolicy: (guildId: string) =>
+    call<InactivityPrunePolicy>(`/guilds/${guildId}/prune-policy`),
+  upsertPrunePolicy: (guildId: string, body: UpsertPolicyInput) =>
+    call<InactivityPrunePolicy>(`/guilds/${guildId}/prune-policy`, {
+      method: 'PUT',
+      body,
+    }),
+
+  // Prune preview/execute (dashboard-facing; bot computes locally for
+  // slash commands but these are wired up so the dashboard can drive them).
+  prunePreview: (guildId: string) =>
+    call<{ policy: InactivityPrunePolicy; candidates: PruneCandidate[] }>(
+      `/guilds/${guildId}/prune/preview`,
+      { method: 'POST' },
+    ),
+  pruneExecute: (guildId: string) =>
+    call<{ policy: InactivityPrunePolicy; candidates: PruneCandidate[] }>(
+      `/guilds/${guildId}/prune/execute`,
+      { method: 'POST' },
+    ),
+
+  // Member activity (bot-bearer)
+  postMemberActivityBatch: (
+    guildId: string,
+    entries: MemberActivityBatchEntry[],
+  ) =>
+    call<{ ok: boolean; count: number }>(
+      `/guilds/${guildId}/member-activity/batch`,
+      { method: 'POST', body: { entries } },
+    ),
+  listMemberActivity: (guildId: string, query?: { sinceDays?: number; limit?: number }) =>
+    call<{ members: MemberActivity[] }>(`/guilds/${guildId}/member-activity`, {
+      query: {
+        ...(query?.sinceDays !== undefined ? { sinceDays: query.sinceDays } : {}),
+        ...(query?.limit !== undefined ? { limit: query.limit } : {}),
+      },
     }),
 };
