@@ -63,6 +63,10 @@ import type {
   UpsertVoiceHubInput,
   VoiceSession,
   StartVoiceSessionInput,
+  SoundboardClip,
+  UpsertSoundboardClipInput,
+  TtsConfig,
+  UpsertTtsConfigInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -642,4 +646,21 @@ export const api = {
     call<VoiceSession>(`/guilds/${guildId}/voice-sessions/${sessionId}/end`, { method: 'POST' }),
   activeVoiceSessions: () =>
     call<{ sessions: VoiceSession[] }>(`/voice-sessions/active`),
+
+  // Soundboard clips
+  listClips: (guildId: string) =>
+    call<{ clips: SoundboardClip[] }>(`/guilds/${guildId}/soundboard`),
+  getClip: (guildId: string, name: string) =>
+    call<SoundboardClip>(`/guilds/${guildId}/soundboard/${encodeURIComponent(name)}`),
+  createClip: (guildId: string, body: UpsertSoundboardClipInput) =>
+    call<SoundboardClip>(`/guilds/${guildId}/soundboard`, { method: 'POST', body }),
+  deleteClip: (guildId: string, name: string) =>
+    call<void>(`/guilds/${guildId}/soundboard/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    }),
+
+  // TTS announcements
+  getTtsConfig: (guildId: string) => call<TtsConfig>(`/guilds/${guildId}/tts-config`),
+  upsertTtsConfig: (guildId: string, body: UpsertTtsConfigInput) =>
+    call<TtsConfig>(`/guilds/${guildId}/tts-config`, { method: 'PUT', body }),
 };
