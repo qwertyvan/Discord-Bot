@@ -15,6 +15,11 @@ import { getCommandRegistry } from '../commands/registry.js';
 import { api, ApiError } from '../api-client.js';
 import { pollMessagePayload } from '../util/poll-render.js';
 import { suggestionMessagePayload } from '../util/suggestion-render.js';
+import {
+  getActiveRound,
+  clearActiveRound,
+} from '../commands/minigames/trivia.js';
+import { hangmanMessagePayload } from '../commands/minigames/hangman.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -76,6 +81,14 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('sgst:')) {
           await handleSuggestionVote(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('tv:ans:')) {
+          await handleTriviaAnswer(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('hm:g:')) {
+          await handleHangmanGuess(interaction);
           return;
         }
       }
@@ -352,6 +365,126 @@ async function handleRsvp(interaction: ButtonInteraction): Promise<void> {
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Failed to RSVP.';
     await interaction.editReply(msg);
+  }
+}
+
+async function handleTriviaAnswer(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.channel) return;
+  const [, , questionId, choiceIndexRaw] = interaction.customId.split(':');
+  if (!questionId || choiceIndexRaw === undefined) return;
+  const choiceIndex = Number(choiceIndexRaw);
+  if (!Number.isInteger(choiceIndex)) return;
+
+  const channelId = interaction.channel.id;
+  const round = getActiveRound(channelId);
+  if (!round || round.questionId !== questionId) {
+    await interaction.reply({
+      content: 'That trivia round has ended.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (round.answered.has(interaction.user.id)) {
+    await interaction.reply({
+      content: 'You already answered this round.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  round.answered.add(interaction.user.id);
+
+  const correct = choiceIndex === round.correctIndex;
+
+  try {
+    await api.incrementTriviaScore(interaction.guildId, {
+      userId: interaction.user.id,
+      correct,
+    });
+  } catch (err) {
+    log.warn('trivia score increment failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  if (correct) {
+    clearActiveRound(channelId);
+    await interaction.update({ components: [] }).catch(() => {});
+    await interaction.followUp({
+      content: `🎉 <@${interaction.user.id}> got it! Correct answer.`,
+      allowedMentions: { users: [interaction.user.id] },
+    });
+    return;
+  }
+  await interaction.reply({
+    content: '❌ Not quite — try again or wait for another player.',
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function handleHangmanGuess(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const [, , gameId, letterRaw] = interaction.customId.split(':');
+  if (!gameId || !letterRaw) return;
+  const letter = letterRaw.toUpperCase();
+
+  try {
+    const game = await api.getHangmanGame(gameId);
+    if (game.status !== 'active') {
+      await interaction.reply({
+        content: 'This hangman game is over.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const wordUpper = game.word.toUpperCase();
+    const revealedLetters = new Set(
+      game.revealed
+        .toUpperCase()
+        .split('')
+        .filter((c) => c !== '_' && c !== ' '),
+    );
+    const missArr = game.misses ? game.misses.split('') : [];
+    const guessed = new Set<string>([...revealedLetters, ...missArr]);
+    if (guessed.has(letter)) {
+      await interaction.reply({
+        content: `**${letter}** has already been tried.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    let newRevealed = game.revealed;
+    let newMisses = game.misses;
+    let nextStatus: 'active' | 'won' | 'lost' | 'abandoned' = 'active';
+
+    if (wordUpper.includes(letter)) {
+      const reveals = new Set(revealedLetters);
+      reveals.add(letter);
+      newRevealed = [...wordUpper]
+        .map((ch) => (ch === ' ' ? ' ' : reveals.has(ch) ? ch : '_'))
+        .join('');
+      if (!newRevealed.includes('_')) nextStatus = 'won';
+    } else {
+      newMisses = missArr.concat(letter).join('');
+      if (newMisses.length >= game.maxMisses) nextStatus = 'lost';
+    }
+
+    const updated = await api.updateHangmanGame(game.id, {
+      revealed: newRevealed,
+      misses: newMisses,
+      status: nextStatus,
+    });
+
+    const payload = hangmanMessagePayload(updated);
+    await interaction.update(payload).catch(() => {});
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to process guess.';
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral }).catch(() => {});
+    } else {
+      await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
   }
 }
 

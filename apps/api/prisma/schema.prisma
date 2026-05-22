@@ -58,6 +58,12 @@ model Guild {
   memberActivity        MemberActivity[]
   activityRoleRules     ActivityRoleRule[]
   inactivityPrunePolicy InactivityPrunePolicy?
+  triviaQuestions       TriviaQuestion[]
+  triviaScores          TriviaScore[]
+  hangmanGames          HangmanGame[]
+  rpsRecords            RpsRecord[]
+  rpsChallenges         RpsChallenge[]
+  dailyStreaks          DailyStreak[]
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -207,6 +213,99 @@ model InactivityPrunePolicy {
   updatedAt      DateTime @default(now()) @updatedAt
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// ─── Mini-games (v0.25.0) ───────────────────────────────────────────
+
+model TriviaQuestion {
+  id           String   @id @default(uuid())
+  guildId      String
+  prompt       String   @db.VarChar(500)
+  choices      String[]
+  correctIndex Int
+  category     String?  @db.VarChar(64)
+  createdBy    String
+  createdAt    DateTime @default(now())
+
+  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, category])
+}
+
+model TriviaScore {
+  guildId  String
+  userId   String
+  correct  Int    @default(0)
+  total    Int    @default(0)
+
+  guild    Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, correct(sort: Desc)])
+}
+
+model HangmanGame {
+  id         String   @id @default(uuid())
+  guildId    String
+  channelId  String
+  hostId     String
+  word       String   @db.VarChar(64)
+  revealed   String   @db.VarChar(64)
+  misses     String   @default("") @db.VarChar(32)
+  maxMisses  Int      @default(6)
+  messageId  String?
+  // 'active' | 'won' | 'lost' | 'abandoned'
+  status     String   @default("active") @db.VarChar(16)
+  createdAt  DateTime @default(now())
+
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status])
+  @@index([channelId, status])
+}
+
+model RpsRecord {
+  guildId  String
+  userId   String
+  wins     Int    @default(0)
+  losses   Int    @default(0)
+  draws    Int    @default(0)
+  elo      Int    @default(1000)
+
+  guild    Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, elo(sort: Desc)])
+}
+
+model RpsChallenge {
+  id               String   @id @default(uuid())
+  guildId          String
+  channelId        String
+  challengerId     String
+  opponentId       String
+  challengerChoice String?  @db.VarChar(16)
+  opponentChoice   String?  @db.VarChar(16)
+  // 'open' | 'resolved' | 'cancelled'
+  status           String   @default("open") @db.VarChar(16)
+  createdAt        DateTime @default(now())
+
+  guild            Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status])
+  @@index([opponentId, status])
+}
+
+model DailyStreak {
+  guildId      String
+  userId       String
+  streak       Int       @default(0)
+  lastClaimAt  DateTime?
+
+  guild        Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, streak(sort: Desc)])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every

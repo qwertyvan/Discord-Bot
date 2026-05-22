@@ -12,6 +12,7 @@ import { funCommands } from './fun/index.js';
 import { voiceCommands } from './voice/index.js';
 import { audioCommands } from './audio/index.js';
 import { adminCommands } from './admin/index.js';
+import { minigamesCommands } from './minigames/index.js';
 
 export interface CommandEntry {
   group: string;
@@ -42,6 +43,7 @@ export function getCommandRegistry(): CommandRegistry {
     voice: voiceCommands,
     audio: audioCommands,
     admin: adminCommands,
+    minigames: minigamesCommands,
   };
 
   const byName = new Map<string, SlashCommand>();

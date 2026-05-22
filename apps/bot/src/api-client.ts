@@ -76,6 +76,18 @@ import type {
   MemberActivity,
   MemberActivityBatchEntry,
   PruneCandidate,
+  TriviaQuestion,
+  TriviaScore,
+  CreateTriviaQuestionInput,
+  HangmanGame,
+  CreateHangmanGameInput,
+  UpdateHangmanGameInput,
+  RpsRecord,
+  RpsChallenge,
+  CreateRpsChallengeInput,
+  RespondRpsChallengeInput,
+  ResolveRpsChallengeResult,
+  ClaimDailyResult,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -719,5 +731,48 @@ export const api = {
         ...(query?.sinceDays !== undefined ? { sinceDays: query.sinceDays } : {}),
         ...(query?.limit !== undefined ? { limit: query.limit } : {}),
       },
+    }),
+
+  // ─── Minigames: trivia ───────────────────────────────────────────
+  listTriviaQuestions: (guildId: string, query?: { category?: string; limit?: number }) =>
+    call<{ questions: TriviaQuestion[] }>(`/guilds/${guildId}/trivia`, query ? { query } : {}),
+  addTriviaQuestion: (guildId: string, body: CreateTriviaQuestionInput) =>
+    call<TriviaQuestion>(`/guilds/${guildId}/trivia`, { method: 'POST', body }),
+  deleteTriviaQuestion: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/trivia/${id}`, { method: 'DELETE' }),
+  randomTriviaQuestion: (guildId: string, query?: { category?: string }) =>
+    call<TriviaQuestion>(
+      `/guilds/${guildId}/trivia/random`,
+      query?.category ? { query: { category: query.category } } : {},
+    ),
+  listTriviaScores: (guildId: string, limit = 10) =>
+    call<{ scores: TriviaScore[] }>(`/guilds/${guildId}/trivia-scores`, { query: { limit } }),
+  incrementTriviaScore: (guildId: string, body: { userId: string; correct: boolean }) =>
+    call<TriviaScore>(`/guilds/${guildId}/trivia-score/increment`, { method: 'POST', body }),
+
+  // ─── Minigames: hangman ─────────────────────────────────────────
+  createHangmanGame: (guildId: string, body: CreateHangmanGameInput) =>
+    call<HangmanGame>(`/guilds/${guildId}/hangman`, { method: 'POST', body }),
+  getHangmanGame: (id: string) =>
+    call<HangmanGame>(`/hangman/${id}`),
+  updateHangmanGame: (id: string, body: UpdateHangmanGameInput) =>
+    call<HangmanGame>(`/hangman/${id}`, { method: 'PATCH', body }),
+
+  // ─── Minigames: RPS ─────────────────────────────────────────────
+  getRpsRecord: (guildId: string, userId: string) =>
+    call<RpsRecord>(`/guilds/${guildId}/rps-record/${userId}`),
+  postRpsChallenge: (guildId: string, body: CreateRpsChallengeInput) =>
+    call<RpsChallenge>(`/guilds/${guildId}/rps-challenges`, { method: 'POST', body }),
+  respondRpsChallenge: (challengeId: string, body: RespondRpsChallengeInput) =>
+    call<ResolveRpsChallengeResult>(`/rps-challenges/${challengeId}/respond`, {
+      method: 'POST',
+      body,
+    }),
+
+  // ─── Minigames: daily streak ────────────────────────────────────
+  claimDailyStreak: (guildId: string, userId: string) =>
+    call<ClaimDailyResult>(`/guilds/${guildId}/daily/claim`, {
+      method: 'POST',
+      body: { userId },
     }),
 };
