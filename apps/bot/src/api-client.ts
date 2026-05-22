@@ -175,6 +175,12 @@ import type {
   MilestoneAward,
   MilestoneAwardKind,
   CreateMilestoneAwardInput,
+  Application,
+  ApplicationStatus,
+  CreateApplicationInput,
+  OnboardingForm,
+  ReviewApplicationInput,
+  UpsertOnboardingFormInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1398,5 +1404,48 @@ export const api = {
         ...(query?.kind ? { kind: query.kind } : {}),
         ...(query?.limit !== undefined ? { limit: query.limit } : {}),
       },
+    }),
+  // ─── Onboarding forms + applications ─────────────────────────────────
+  listForms: (guildId: string) =>
+    call<{ forms: OnboardingForm[] }>(`/guilds/${guildId}/onboarding-forms`),
+  getForm: (guildId: string, slug: string) =>
+    call<OnboardingForm>(`/guilds/${guildId}/onboarding-forms/${encodeURIComponent(slug)}`),
+  createForm: (guildId: string, body: UpsertOnboardingFormInput) =>
+    call<OnboardingForm>(`/guilds/${guildId}/onboarding-forms`, { method: 'POST', body }),
+  updateForm: (guildId: string, formId: string, body: UpsertOnboardingFormInput) =>
+    call<OnboardingForm>(`/guilds/${guildId}/onboarding-forms/${formId}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteForm: (guildId: string, formId: string) =>
+    call<void>(`/guilds/${guildId}/onboarding-forms/${formId}`, { method: 'DELETE' }),
+  listApplications: (
+    guildId: string,
+    query?: { status?: ApplicationStatus; formId?: string; limit?: number },
+  ) =>
+    call<{ applications: Application[] }>(
+      `/guilds/${guildId}/applications`,
+      query
+        ? {
+            query: {
+              ...(query.status ? { status: query.status } : {}),
+              ...(query.formId ? { formId: query.formId } : {}),
+              ...(query.limit !== undefined ? { limit: query.limit } : {}),
+            },
+          }
+        : {},
+    ),
+  getApplication: (guildId: string, applicationId: string) =>
+    call<Application>(`/guilds/${guildId}/applications/${applicationId}`),
+  createApplication: (guildId: string, body: CreateApplicationInput) =>
+    call<Application>(`/guilds/${guildId}/applications`, { method: 'POST', body }),
+  updateApplication: (
+    guildId: string,
+    applicationId: string,
+    body: ReviewApplicationInput,
+  ) =>
+    call<Application>(`/guilds/${guildId}/applications/${applicationId}`, {
+      method: 'PATCH',
+      body,
     }),
 };

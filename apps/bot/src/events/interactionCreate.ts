@@ -1,8 +1,12 @@
 import {
+  ActionRowBuilder,
   ChannelType,
   Events,
   MessageFlags,
+  ModalBuilder,
   PermissionFlagsBits,
+  TextInputBuilder,
+  TextInputStyle,
   ThreadAutoArchiveDuration,
   type ButtonInteraction,
   type Client,
@@ -23,6 +27,7 @@ import {
 import { hangmanMessagePayload } from '../commands/minigames/hangman.js';
 import { dispatchOnCommand } from '../plugins/index.js';
 import { giveawayMessagePayload } from '../util/giveaway-render.js';
+import { applicationMessagePayload } from '../util/application-render.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -69,6 +74,17 @@ export function registerInteractionCreate(client: Client): void {
         return;
       }
 
+      if (interaction.isAutocomplete()) {
+        const command = getCommandRegistry().byName.get(interaction.commandName);
+        if (command?.autocomplete) {
+          await command.autocomplete(interaction);
+        } else {
+          // No handler — respond with empty so Discord doesn't time us out.
+          await interaction.respond([]).catch(() => undefined);
+        }
+        return;
+      }
+
       if (interaction.isMessageContextMenuCommand()) {
         const cmd = getCommandRegistry().contextByName.get(interaction.commandName);
         if (cmd) {
@@ -82,6 +98,14 @@ export function registerInteractionCreate(client: Client): void {
       if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('report-modal:')) {
           await handleReportModal(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('apply-modal:')) {
+          await handleApplyModal(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('apply-reject:')) {
+          await handleApplyRejectModal(interaction);
           return;
         }
       }
@@ -122,6 +146,14 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('gw:enter:')) {
           await handleGiveawayEnter(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('apply:approve:')) {
+          await handleApplicationApprove(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('apply:reject:')) {
+          await handleApplicationReject(interaction);
           return;
         }
       }
@@ -671,6 +703,205 @@ async function handleSuggestionVote(interaction: ButtonInteraction): Promise<voi
     await interaction.editReply(`${direction === 'up' ? '👍' : '👎'} Vote recorded.`);
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Vote failed.';
+    await interaction.editReply(msg);
+  }
+}
+
+// ─── Onboarding forms / applications ────────────────────────────────────
+
+async function handleApplyModal(interaction: ModalSubmitInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  // customId is "apply-modal:<formId>".
+  const formId = interaction.customId.slice('apply-modal:'.length);
+  if (!formId) return;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const { forms } = await api.listForms(interaction.guildId);
+    const form = forms.find((f) => f.id === formId);
+    if (!form) {
+      await interaction.editReply('That form no longer exists.');
+      return;
+    }
+
+    // Reconstruct {label: answer} from the question order — we wrote the
+    // inputs as q:0, q:1, … in the order forms.questions yielded them.
+    const answers: Record<string, string> = {};
+    for (const [index, q] of form.questions.entries()) {
+      const raw = interaction.fields.getTextInputValue(`q:${index}`) ?? '';
+      answers[q.label] = raw.slice(0, q.maxLength);
+    }
+
+    const created = await api.createApplication(interaction.guildId, {
+      formId: form.id,
+      userId: interaction.user.id,
+      answers,
+    });
+
+    // Post the staff review embed if a review channel is configured.
+    if (form.reviewChannelId) {
+      const channel = interaction.guild.channels.cache.get(form.reviewChannelId);
+      if (channel && channel.type === ChannelType.GuildText) {
+        const message = await (channel as TextChannel)
+          .send(applicationMessagePayload(created, form.name))
+          .catch(() => null);
+        if (message) {
+          await api
+            .updateApplication(interaction.guildId, created.id, {
+              reviewMessageId: message.id,
+            })
+            .catch(() => undefined);
+        }
+      }
+    }
+
+    await interaction.editReply(
+      `✅ Application submitted for **${form.name}**. Staff will review it.`,
+    );
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to submit application.';
+    await interaction.editReply(msg);
+  }
+}
+
+async function handleApplicationApprove(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  const applicationId = interaction.customId.slice('apply:approve:'.length);
+  if (!applicationId) return;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const existing = await api.getApplication(interaction.guildId, applicationId);
+    if (existing.status !== 'pending') {
+      await interaction.editReply(`This application is already **${existing.status}**.`);
+      return;
+    }
+    // We don't have a getFormById call, so look it up via the list.
+    const { forms } = await api.listForms(interaction.guildId);
+    const f = forms.find((x) => x.id === existing.formId);
+    const formName = f?.name ?? 'application';
+    const approveRoleId = f?.approveRoleId ?? null;
+    const approveDmMessage = f?.approveDmMessage ?? null;
+
+    const updated = await api.updateApplication(interaction.guildId, applicationId, {
+      status: 'approved',
+      reviewedBy: interaction.user.id,
+      reviewedAt: new Date().toISOString(),
+    });
+
+    // Grant the approval role if configured.
+    if (approveRoleId) {
+      const member = await interaction.guild.members
+        .fetch(existing.userId)
+        .catch(() => null);
+      if (member) {
+        await member.roles
+          .add(approveRoleId, `Application ${applicationId} approved`)
+          .catch(() => undefined);
+      }
+    }
+
+    // DM the user, if a template is set.
+    if (approveDmMessage) {
+      const user = await interaction.client.users.fetch(existing.userId).catch(() => null);
+      if (user) await user.send({ content: approveDmMessage }).catch(() => undefined);
+    }
+
+    // Edit the original review message to reflect the new status.
+    if (interaction.message) {
+      await interaction.message
+        .edit(applicationMessagePayload(updated, formName))
+        .catch(() => undefined);
+    }
+
+    await interaction.editReply(`✅ Approved application from <@${existing.userId}>.`);
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to approve.';
+    await interaction.editReply(msg);
+  }
+}
+
+async function handleApplicationReject(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const applicationId = interaction.customId.slice('apply:reject:'.length);
+  if (!applicationId) return;
+
+  // Open a follow-up modal to capture the rejection reason. The reason is
+  // applied + DM'd inside handleApplyRejectModal.
+  const modal = new ModalBuilder()
+    .setCustomId(`apply-reject:${applicationId}`)
+    .setTitle('Reject application');
+
+  const reasonInput = new TextInputBuilder()
+    .setCustomId('reason')
+    .setLabel('Reason (sent to the applicant)')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(500);
+
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput),
+  );
+
+  await interaction.showModal(modal);
+}
+
+async function handleApplyRejectModal(interaction: ModalSubmitInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  const applicationId = interaction.customId.slice('apply-reject:'.length);
+  if (!applicationId) return;
+  const reason = interaction.fields.getTextInputValue('reason').trim();
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const existing = await api.getApplication(interaction.guildId, applicationId);
+    if (existing.status !== 'pending') {
+      await interaction.editReply(`This application is already **${existing.status}**.`);
+      return;
+    }
+    const { forms } = await api.listForms(interaction.guildId);
+    const f = forms.find((x) => x.id === existing.formId);
+    const formName = f?.name ?? 'application';
+    const rejectDmTemplate = f?.rejectDmTemplate ?? null;
+
+    const updated = await api.updateApplication(interaction.guildId, applicationId, {
+      status: 'rejected',
+      reviewedBy: interaction.user.id,
+      reviewedAt: new Date().toISOString(),
+      reviewNote: reason,
+    });
+
+    // DM the user. If a template is set, append the reason underneath; else
+    // send a default message with the reason inline.
+    const dmContent = rejectDmTemplate
+      ? `${rejectDmTemplate}\n\n**Reason:** ${reason}`
+      : `Your application to **${formName}** was not approved.\n\n**Reason:** ${reason}`;
+    const user = await interaction.client.users.fetch(existing.userId).catch(() => null);
+    if (user) await user.send({ content: dmContent }).catch(() => undefined);
+
+    // Edit the original review message to reflect the rejection. We have to
+    // look it up via the persisted review message id since the modal-submit
+    // interaction doesn't carry a reference to the originating message.
+    if (updated.reviewMessageId && f?.reviewChannelId) {
+      const channel = interaction.guild.channels.cache.get(f.reviewChannelId);
+      if (channel && channel.type === ChannelType.GuildText) {
+        const message = await (channel as TextChannel).messages
+          .fetch(updated.reviewMessageId)
+          .catch(() => null);
+        if (message) {
+          await message
+            .edit(applicationMessagePayload(updated, formName))
+            .catch(() => undefined);
+        }
+      }
+    }
+
+    await interaction.editReply(`❌ Rejected application from <@${existing.userId}>.`);
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to reject.';
     await interaction.editReply(msg);
   }
 }
