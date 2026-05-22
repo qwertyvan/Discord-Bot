@@ -14,6 +14,7 @@ export * from './auto-response.js';
 export * from './auto-reactions.js';
 export * from './leveling.js';
 export * from './economy.js';
+export * from './economy-expansion.js';
 export * from './tickets.js';
 export * from './integrations.js';
 export * from './feeds.js';

@@ -193,6 +193,20 @@ import type {
   LinkDomain,
   CreateLinkDomainInput,
   LinkDomainKind,
+  ShopItemExt,
+  UpsertShopItemInput,
+  InventoryEntryExt,
+  GiftRequest,
+  ConsumeItemInput,
+  ConsumeItemResult,
+  BetRequest,
+  DiceRequest,
+  BlackjackState,
+  SlotsResult,
+  DiceResult,
+  LootDrop,
+  UpsertLootDropInput,
+  LootClaimResult,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1476,4 +1490,101 @@ export const api = {
     call<LinkDomain>(`/guilds/${guildId}/link-domains`, { method: 'POST', body }),
   deleteLinkDomain: (guildId: string, id: string) =>
     call<void>(`/guilds/${guildId}/link-domains/${id}`, { method: 'DELETE' }),
+  // Economy expansion (v0.49) — extended shop items, inventory, mini-games,
+  // and loot crates. Lives alongside the legacy /shop endpoints; the legacy
+  // ones stay in place so older bot deployments don't break mid-rollout.
+  listShopItems: (guildId: string, opts?: { includeDisabled?: boolean }) =>
+    call<{ items: ShopItemExt[] }>(`/guilds/${guildId}/shop-items`, {
+      query: opts?.includeDisabled ? { includeDisabled: 'true' } : {},
+    }),
+  createShopItemExt: (guildId: string, body: UpsertShopItemInput) =>
+    call<ShopItemExt>(`/guilds/${guildId}/shop-items`, { method: 'POST', body }),
+  updateShopItem: (
+    guildId: string,
+    id: string,
+    body: Partial<UpsertShopItemInput>,
+  ) =>
+    call<ShopItemExt>(`/guilds/${guildId}/shop-items/${id}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteShopItemExt: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/shop-items/${id}`, { method: 'DELETE' }),
+  buyShopItemExt: (
+    guildId: string,
+    id: string,
+    userId: string,
+    quantity = 1,
+  ) =>
+    call<{
+      item: ShopItemExt;
+      balance: number;
+      quantity: number;
+      cost: number;
+    }>(`/guilds/${guildId}/shop-items/${id}/buy`, {
+      method: 'POST',
+      body: { userId, quantity },
+    }),
+
+  listInventoryExt: (guildId: string, userId: string) =>
+    call<{ entries: InventoryEntryExt[] }>(
+      `/guilds/${guildId}/inventory/${userId}`,
+    ),
+  giftItem: (guildId: string, body: GiftRequest) =>
+    call<{ from: InventoryEntryExt; to: InventoryEntryExt }>(
+      `/guilds/${guildId}/inventory/transfer`,
+      { method: 'POST', body },
+    ),
+  consumeItem: (guildId: string, body: ConsumeItemInput) =>
+    call<ConsumeItemResult>(`/guilds/${guildId}/inventory/consume`, {
+      method: 'POST',
+      body,
+    }),
+
+  blackjackStart: (guildId: string, body: BetRequest) =>
+    call<{ state: BlackjackState; balance: number | null }>(
+      `/guilds/${guildId}/games/blackjack/start`,
+      { method: 'POST', body },
+    ),
+  blackjackHit: (guildId: string, gameId: string) =>
+    call<{ state: BlackjackState; balance: number | null }>(
+      `/guilds/${guildId}/games/blackjack/${gameId}/hit`,
+      { method: 'POST' },
+    ),
+  blackjackStand: (guildId: string, gameId: string) =>
+    call<{ state: BlackjackState; balance: number | null }>(
+      `/guilds/${guildId}/games/blackjack/${gameId}/stand`,
+      { method: 'POST' },
+    ),
+  playSlots: (guildId: string, body: BetRequest) =>
+    call<SlotsResult>(`/guilds/${guildId}/games/slots`, {
+      method: 'POST',
+      body,
+    }),
+  playDice: (guildId: string, body: DiceRequest) =>
+    call<DiceResult>(`/guilds/${guildId}/games/dice`, {
+      method: 'POST',
+      body,
+    }),
+
+  listLootDrops: (guildId: string) =>
+    call<{ drops: LootDrop[] }>(`/guilds/${guildId}/loot-drops`),
+  createLootDrop: (guildId: string, body: UpsertLootDropInput) =>
+    call<LootDrop>(`/guilds/${guildId}/loot-drops`, { method: 'POST', body }),
+  updateLootDrop: (
+    guildId: string,
+    id: string,
+    body: Partial<UpsertLootDropInput>,
+  ) =>
+    call<LootDrop>(`/guilds/${guildId}/loot-drops/${id}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteLootDrop: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/loot-drops/${id}`, { method: 'DELETE' }),
+  claimLoot: (guildId: string, userId: string) =>
+    call<LootClaimResult>(`/guilds/${guildId}/loot-claims/claim`, {
+      method: 'POST',
+      body: { userId },
+    }),
 };
