@@ -11,6 +11,11 @@ import {
 import { api, ApiError } from '../api-client.js';
 import { log } from '../logger.js';
 import type { VoiceHubChannel } from '@discord-bot/shared';
+import {
+  VOICE_CLAIM_GRACE_MS,
+  cancelPendingRelease,
+  schedulePendingRelease,
+} from '../util/voice-claim-state.js';
 
 // Per-guild cache of configured voice hubs. Invalidated on hub create/delete
 // via `invalidateVoiceHubCache`. TTL keeps stale entries from lingering
@@ -106,10 +111,7 @@ async function spawnChildChannel(
   }
 }
 
-async function maybeDeleteEmptyChild(
-  guildId: string,
-  channel: VoiceBasedChannel,
-): Promise<void> {
+async function maybeDeleteEmptyChild(guildId: string, channel: VoiceBasedChannel): Promise<void> {
   const spawned = spawnedByGuild.get(guildId);
   if (!spawned || !spawned.has(channel.id)) return;
   // Only delete when truly empty of humans+bots so we don't race a fresh join.
@@ -197,5 +199,119 @@ export function registerVoiceStateEvents(client: Client): void {
         await maybeDeleteEmptyChild(guildId, oldChannel);
       }
     }
+
+    // ─── Voice-claim ownership maintenance ─────────────────────────────
+    // Owner returned to their claimed channel: cancel any pending release.
+    if (newChan && newChan === oldChan) return; // no transition
+    await handleVoiceClaimTransition(guildId, userId, oldChan, newChan, oldState);
   });
+}
+
+// Track per-channel known claims to avoid hitting the API on every transition.
+// Keyed by `${guildId}:${channelId}` → ownerId. Refreshed on demand.
+const claimOwnerCache = new Map<string, string | null>();
+const CLAIM_TTL_MS = 30_000;
+const claimCacheFetchedAt = new Map<string, number>();
+
+function claimKey(guildId: string, channelId: string): string {
+  return `${guildId}:${channelId}`;
+}
+
+async function getClaimOwner(guildId: string, channelId: string): Promise<string | null> {
+  const k = claimKey(guildId, channelId);
+  const fetched = claimCacheFetchedAt.get(k);
+  if (fetched && Date.now() - fetched < CLAIM_TTL_MS) {
+    return claimOwnerCache.get(k) ?? null;
+  }
+  try {
+    const { claims } = await api.listVoiceClaims(guildId);
+    for (const c of claims) {
+      claimOwnerCache.set(claimKey(guildId, c.channelId), c.ownerId);
+      claimCacheFetchedAt.set(claimKey(guildId, c.channelId), Date.now());
+    }
+    // Mark this specific (guild, channel) as fetched even if no row exists.
+    if (!claimCacheFetchedAt.has(k)) {
+      claimOwnerCache.set(k, null);
+      claimCacheFetchedAt.set(k, Date.now());
+    }
+    return claimOwnerCache.get(k) ?? null;
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 404) {
+      log.warn('listVoiceClaims failed', { guildId, err: String(err) });
+    }
+    return null;
+  }
+}
+
+function invalidateClaimCache(guildId: string, channelId: string): void {
+  const k = claimKey(guildId, channelId);
+  claimOwnerCache.delete(k);
+  claimCacheFetchedAt.delete(k);
+}
+
+/** Public hook so the /vc command can keep the in-process cache fresh. */
+export function noteVoiceClaimMutation(guildId: string, channelId: string): void {
+  invalidateClaimCache(guildId, channelId);
+}
+
+async function releaseClaim(guildId: string, channelId: string): Promise<void> {
+  invalidateClaimCache(guildId, channelId);
+  try {
+    await api.deleteVoiceClaim(guildId, channelId);
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 404) {
+      log.warn('voice claim release failed', { guildId, channelId, err: String(err) });
+    }
+  }
+}
+
+async function handleVoiceClaimTransition(
+  guildId: string,
+  userId: string,
+  oldChan: string | null,
+  newChan: string | null,
+  oldState: VoiceState,
+): Promise<void> {
+  // Owner left a claimed channel.
+  if (oldChan && oldChan !== newChan) {
+    const ownerId = await getClaimOwner(guildId, oldChan);
+    if (ownerId === userId) {
+      const channel = oldState.channel;
+      // If the channel is now empty, release immediately. The bot itself can
+      // be present (we sometimes connect for TTS/music), so count humans only.
+      const humansLeft =
+        channel && channel.isVoiceBased() ? channel.members.filter((m) => !m.user.bot).size : 0;
+      if (humansLeft === 0) {
+        await releaseClaim(guildId, oldChan);
+      } else {
+        // Schedule a 60s grace release; cancelled if the owner returns.
+        schedulePendingRelease(guildId, oldChan, VOICE_CLAIM_GRACE_MS, async () => {
+          // Double-check the owner hasn't returned by the time the timer fires.
+          const current = oldState.guild?.channels.cache.get(oldChan);
+          if (current && current.isVoiceBased()) {
+            const stillHere = current.members.has(userId);
+            if (stillHere) return; // owner came back via a route we didn't see
+          }
+          await releaseClaim(guildId, oldChan);
+        });
+      }
+    } else if (oldChan) {
+      // Non-owner left: if the channel emptied of humans, also release.
+      const channel = oldState.channel;
+      const humansLeft =
+        channel && channel.isVoiceBased() ? channel.members.filter((m) => !m.user.bot).size : 0;
+      if (humansLeft === 0 && ownerId) {
+        cancelPendingRelease(guildId, oldChan);
+        await releaseClaim(guildId, oldChan);
+      }
+    }
+  }
+
+  // Owner re-joined the channel they own → cancel any pending release.
+  if (newChan && newChan !== oldChan) {
+    const ownerId = await getClaimOwner(guildId, newChan);
+    if (ownerId === userId) {
+      cancelPendingRelease(guildId, newChan);
+    }
+  }
 }

@@ -21,6 +21,7 @@ export * from './scheduled.js';
 export * from './custom-command.js';
 export * from './community.js';
 export * from './voice.js';
+export * from './voice-claim.js';
 export * from './audio.js';
 export * from './insights.js';
 export * from './activity-roles.js';

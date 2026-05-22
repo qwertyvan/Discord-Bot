@@ -65,6 +65,9 @@ model Guild {
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
+  voiceClaimConfig     VoiceClaimConfig?
+  voiceClaimable       VoiceClaimableChannel[]
+  voiceClaims          VoiceClaim[]
   soundboardClips      SoundboardClip[]
   ttsConfig            TtsConfig?
   activitySnapshots    ActivitySnapshot[]
@@ -202,6 +205,46 @@ model VoiceHubChannel {
 
   guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
+  @@index([guildId])
+}
+
+// Per-guild voice-claim configuration. When `enabled` is true, members can
+// claim ownership of a voice channel via /vc claim. `mode = "all"` lets any
+// voice channel be claimed; `mode = "listed"` restricts claiming to the
+// channels listed in `VoiceClaimableChannel`.
+model VoiceClaimConfig {
+  guildId String  @id
+  enabled Boolean @default(false)
+  mode    String  @default("listed") @db.VarChar(16)
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Curated allow-list of voice channels claimable via /vc claim. Only consulted
+// when the parent VoiceClaimConfig.mode is "listed".
+model VoiceClaimableChannel {
+  guildId   String
+  channelId String
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, channelId])
+  @@index([guildId])
+}
+
+// Active claim on a voice channel. One row per claimed channel; the owner has
+// /vc rename / limit / kick / lock / unlock controls while present. The bot
+// auto-clears the claim when the owner leaves for >60s or the channel empties.
+model VoiceClaim {
+  guildId   String
+  channelId String
+  ownerId   String
+  claimedAt DateTime  @default(now())
+  lockedAt  DateTime?
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, channelId])
   @@index([guildId])
 }
 
