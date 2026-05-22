@@ -59,6 +59,9 @@ model Guild {
   stageScheduledEvents StageScheduledEvent[]
   reports              Report[]
   serverTemplates      ServerTemplate[]
+  retentionPolicy      RetentionPolicy?
+  dataExportJobs       DataExportJob[]
+  dataDeleteRequests   DataDeleteRequest[]
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
@@ -1588,4 +1591,56 @@ model Session {
 model BotHeartbeat {
   id        Int      @id @default(1)
   updatedAt DateTime @updatedAt @default(now())
+}
+
+// GDPR data-export job. The collector runs synchronously when /me/data-export
+// is called and stores the resulting payload (or, in a future iteration, a
+// signed URL to a generated archive) so the user can re-fetch it.
+model DataExportJob {
+  id           String    @id @default(uuid())
+  userId       String
+  guildId      String?
+  requestedAt  DateTime  @default(now())
+  completedAt  DateTime?
+  fileUrl      String?   @db.VarChar(2048)
+  status       String    @default("pending") @db.VarChar(16)
+
+  guild        Guild?    @relation(fields: [guildId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+}
+
+// GDPR data-delete request. Two-step: the user calls /me/data-delete to
+// receive a confirmation token, then DMs /me/data-delete/confirm with the
+// token, at which point the API wipes user-scoped rows in a transaction.
+model DataDeleteRequest {
+  id                  String    @id @default(uuid())
+  userId              String
+  guildId             String?
+  requestedAt         DateTime  @default(now())
+  confirmedAt         DateTime?
+  completedAt         DateTime?
+  confirmationToken   String    @db.VarChar(64)
+  status              String    @default("pending") @db.VarChar(16)
+
+  guild               Guild?    @relation(fields: [guildId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+}
+
+// Per-guild data-retention policy. Each *Days field, when set, bounds the
+// horizon (in days) for that table; the daily pruner deletes rows older than
+// the configured horizon. `redactPii` toggles audit-log user-ID redaction
+// on dashboard reads (see util/getRedactedUserId in apps/api).
+model RetentionPolicy {
+  guildId         String   @id
+  modActionsDays  Int?
+  modLogsDays     Int?
+  transcriptDays  Int?
+  snapshotDays    Int?
+  auditLogDays    Int?
+  redactPii       Boolean  @default(false)
+  updatedAt       DateTime @updatedAt @default(now())
+
+  guild           Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }

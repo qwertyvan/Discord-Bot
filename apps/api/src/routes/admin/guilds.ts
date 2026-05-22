@@ -26,6 +26,7 @@ import {
   invalidatePermissionsCache,
 } from '../../guild-permissions.js';
 import { serializeModAction } from '../../services/mod-actions.js';
+import { getRedactedUserId } from '../../util/pii.js';
 
 const Params = z.object({ guildId: SnowflakeSchema });
 const ActionParams = z.object({ guildId: SnowflakeSchema, actionId: z.string().uuid() });
@@ -254,12 +255,19 @@ export const adminGuildsRoutes: FastifyPluginAsyncZod = async (app) => {
         orderBy: { createdAt: 'desc' },
         take: limit,
       });
+      // Apply PII redaction policy: when redactPii=true, expose only an
+      // opaque per-guild hash of the user id so dashboards can still group
+      // events without revealing snowflakes.
+      const policy = await app.prisma.retentionPolicy.findUnique({
+        where: { guildId },
+        select: { redactPii: true },
+      });
       return {
         events: events.map((e) => ({
           id: e.id,
           guildId: e.guildId,
           type: e.type,
-          userId: e.userId,
+          userId: getRedactedUserId(e.userId, e.guildId, policy),
           channelId: e.channelId,
           payload: e.payload as Record<string, unknown>,
           createdAt: e.createdAt.toISOString(),

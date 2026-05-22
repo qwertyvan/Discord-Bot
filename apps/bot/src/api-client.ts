@@ -151,6 +151,8 @@ import type {
   CreateTemplateInput,
   TemplateDiff,
   TemplatePayload,
+  RetentionPolicy,
+  UpsertRetentionPolicyInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1195,4 +1197,44 @@ export const api = {
     }),
   deleteTemplate: (id: string) =>
     call<void>(`/templates/${id}`, { method: 'DELETE' }),
+  // ─── Privacy / GDPR ────────────────────────────────────────────────
+  requestDataExport: (body: { userId: string; guildId?: string }) =>
+    call<{
+      jobId: string;
+      status: 'completed';
+      payload: Record<string, unknown>;
+    }>(`/me/data-export`, { method: 'POST', body }),
+  requestDataDelete: (body: { userId: string; guildId?: string }) =>
+    call<{
+      id: string;
+      token: string;
+      requestedAt: string;
+      guildId: string | null;
+    }>(`/me/data-delete`, { method: 'POST', body }),
+  confirmDataDelete: (body: { token: string; userId: string }) =>
+    call<{
+      id: string;
+      status: 'completed';
+      deleted: Record<string, number>;
+    }>(`/me/data-delete/confirm`, { method: 'POST', body }),
+
+  // Retention policy (bot-side)
+  getRetentionPolicy: (guildId: string) =>
+    call<RetentionPolicy>(`/guilds/${guildId}/retention-policy`),
+  upsertRetentionPolicy: (guildId: string, body: UpsertRetentionPolicyInput) =>
+    call<RetentionPolicy>(`/guilds/${guildId}/retention-policy`, {
+      method: 'PUT',
+      body,
+    }),
+  listRetentionPolicyGuilds: () =>
+    call<{ guildIds: string[] }>(`/retention-policies`),
+  pruneRetention: (guildId: string) =>
+    call<{
+      guildId: string;
+      modActions: number;
+      modNotes: number;
+      tickets: number;
+      messageActivity: number;
+      auditEvents: number;
+    }>(`/guilds/${guildId}/retention-prune`, { method: 'POST' }),
 };
