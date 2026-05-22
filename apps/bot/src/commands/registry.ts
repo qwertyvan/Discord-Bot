@@ -14,6 +14,7 @@ import { audioCommands } from './audio/index.js';
 import { adminCommands } from './admin/index.js';
 import { minigamesCommands } from './minigames/index.js';
 import { backupCommands } from './backup/index.js';
+import { musicCommands } from './music/index.js';
 
 export interface CommandEntry {
   group: string;
@@ -46,6 +47,7 @@ export function getCommandRegistry(): CommandRegistry {
     admin: adminCommands,
     minigames: minigamesCommands,
     backup: backupCommands,
+    music: musicCommands,
   };
 
   const byName = new Map<string, SlashCommand>();

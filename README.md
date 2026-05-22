@@ -51,6 +51,7 @@ The bot never touches the database directly — it calls the API with a shared b
 | **Misc utility** | `/time show\|set\|clear` per-user IANA timezone, `/preview <url>` link-preview unfurler, `/translate` (DeepL), `/shorten` (self-hosted; `/s/:slug` redirects) |
 | **Content safety** | Sightengine NSFW image classifier and Google Safe Browsing URL check wired into the automod pipeline — fire as standard automod hits when the corresponding credentials are set per guild |
 | **Scheduling** | `/announce schedule\|list\|cancel` one-shot or recurring announcements, `/birthday set\|show\|clear` with daily auto-announce, `/event create\|cancel\|upcoming` with yes / maybe / no RSVP buttons |
+| **Music** (optional Lavalink) | `/play`, `/queue`, `/skip`, `/pause`, `/resume`, `/loop`, `/shuffle`, `/volume`, `/lyrics`, `/stop` — per-guild queue persisted to DB; lyrics via lyrics.ovh (no key) |
 | **Dashboard polish** | Per-guild admin-action audit log, JSON config export endpoint, sensible-default Config tab |
 | **Admin dashboard** | Per-guild stats, filterable mod log, audit log, automod editor, welcome / verification / reaction-roles / logging / policy / leveling / economy / tickets / stats config screens |
 
@@ -163,6 +164,31 @@ Persisted state (anything you want to read from the dashboard or survive restart
 2. Add a Zod schema in `packages/shared/src/`.
 3. Add a route in `apps/api/src/routes/`.
 4. Add a method in `apps/bot/src/api-client.ts`.
+
+## Music (optional Lavalink)
+
+The bot ships music slash commands (`/play`, `/queue`, `/skip`, `/pause`, `/resume`, `/loop`, `/shuffle`, `/volume`, `/lyrics`, `/stop`). The queue is persisted in Postgres so it survives bot restarts, and lyrics lookups use the free, no-key [lyrics.ovh](https://lyrics.ovh) endpoint with a 5-second timeout.
+
+Audio playback requires an external **Lavalink** node plus one of the Node clients (`shoukaku` or `lavalink-client`) installed into `apps/bot`. The bot loads whichever it finds at runtime via dynamic import; if neither is installed, the queue, lyrics, and command surface still work but voice playback is stubbed with a "Lavalink client not installed" notice.
+
+Required environment variables (read by the Lavalink client):
+
+| Variable | Where | Notes |
+|---|---|---|
+| `LAVALINK_HOST` | bot | Hostname of the Lavalink node (e.g. `localhost`). |
+| `LAVALINK_PORT` | bot | TCP port. Default `2333`. |
+| `LAVALINK_PASSWORD` | bot | Password configured in Lavalink's `application.yml`. |
+
+To enable playback:
+
+```bash
+# 1. Run a Lavalink node (https://github.com/lavalink-devs/Lavalink)
+# 2. Install a client (pick one)
+npm i shoukaku --workspace @discord-bot/bot
+#  — or —
+npm i lavalink-client --workspace @discord-bot/bot
+# 3. Set LAVALINK_HOST / LAVALINK_PORT / LAVALINK_PASSWORD in apps/bot/.env
+```
 
 ## Deployment notes
 
