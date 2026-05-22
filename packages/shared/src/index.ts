@@ -28,6 +28,7 @@ export * from './appeals.js';
 export * from './music.js';
 export * from './giveaways.js';
 export * from './starboard.js';
+export * from './counters.js';
 export * from './user.js';
 export * from './errors.js';
 export * from './permissions.js';

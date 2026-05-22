@@ -121,6 +121,11 @@ import type {
   UpsertStarboardConfigInput,
   StarboardEntry,
   RecordStarInput,
+  CounterChannel,
+  UpsertCounterChannelInput,
+  VanityRole,
+  VanityRoleKind,
+  UpsertVanityRoleInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1001,4 +1006,24 @@ export const api = {
       method: 'PATCH',
       body,
     }),
+  // Counter channels
+  listCounterChannels: (guildId: string) =>
+    call<{ counters: CounterChannel[] }>(`/guilds/${guildId}/counter-channels`),
+  upsertCounterChannel: (guildId: string, body: UpsertCounterChannelInput) =>
+    call<CounterChannel>(`/guilds/${guildId}/counter-channels`, { method: 'PUT', body }),
+  deleteCounterChannel: (guildId: string, channelId: string) =>
+    call<void>(`/guilds/${guildId}/counter-channels/${channelId}`, { method: 'DELETE' }),
+
+  // Vanity roles
+  listVanityRoles: (guildId: string, kind?: VanityRoleKind) =>
+    call<{ vanityRoles: VanityRole[] }>(
+      `/guilds/${guildId}/vanity-roles`,
+      kind ? { query: { kind } } : {},
+    ),
+  createVanityRole: (guildId: string, body: UpsertVanityRoleInput) =>
+    call<VanityRole>(`/guilds/${guildId}/vanity-roles`, { method: 'POST', body }),
+  deleteVanityRole: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/vanity-roles/${id}`, { method: 'DELETE' }),
+  deleteVanityRoleByRoleId: (guildId: string, roleId: string) =>
+    call<void>(`/guilds/${guildId}/vanity-roles/by-role/${roleId}`, { method: 'DELETE' }),
 };

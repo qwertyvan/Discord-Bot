@@ -6,6 +6,7 @@ import {
   type Client,
   type Guild,
   type GuildMember,
+  type GuildBasedChannel,
   type TextChannel,
 } from 'discord.js';
 import { api, ApiError } from './api-client.js';
@@ -75,6 +76,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop), APPEAL_SLA_TICK_MS);
   setInterval(() => tick('giveaways', () => endDueGiveaways(client))().catch(noop), GIVEAWAY_TICK_MS);
   setInterval(() => tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop), STARBOARD_DIGEST_TICK_MS);
+  setInterval(() => tick('counters', () => updateCounterChannels(client))().catch(noop), COUNTERS_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -92,8 +94,13 @@ export function startScheduler(client: Client): void {
     tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop);
     tick('giveaways', () => endDueGiveaways(client))().catch(noop);
     tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop);
+    tick('counters', () => updateCounterChannels(client))().catch(noop);
   }, 5_000);
 }
+
+// Discord rate-limits channel renames at 2 per 10 minutes — anything more
+// frequent than 5 minutes per channel risks hitting the 429 cap.
+const COUNTERS_TICK_MS = 5 * 60_000;
 
 function noop() {}
 
@@ -681,6 +688,85 @@ async function reconcileGuildActivityRoles(guild: Guild): Promise<void> {
           guildId: guild.id,
           userId: member.id,
           roleId: rule.roleId,
+          err: String(err),
+        });
+      }
+    }
+  }
+}
+
+// ─── Counter channels ──────────────────────────────────────────────────
+function renamableChannel(channel: GuildBasedChannel | undefined): boolean {
+  if (!channel) return false;
+  return (
+    channel.type === ChannelType.GuildVoice ||
+    channel.type === ChannelType.GuildStageVoice ||
+    channel.type === ChannelType.GuildText ||
+    channel.type === ChannelType.GuildCategory ||
+    channel.type === ChannelType.GuildAnnouncement ||
+    channel.type === ChannelType.GuildForum
+  );
+}
+
+function computeCounterValue(
+  client: Client,
+  type: string,
+  guildId: string,
+): number | null {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) return null;
+  switch (type) {
+    case 'members':
+      return guild.memberCount;
+    case 'humans': {
+      const bots = guild.members.cache.filter((m) => m.user.bot).size;
+      // memberCount is authoritative; subtract cached bots as the best
+      // available approximation when not all members are cached.
+      return Math.max(0, guild.memberCount - bots);
+    }
+    case 'bots':
+      return guild.members.cache.filter((m) => m.user.bot).size;
+    case 'online':
+      return guild.presences.cache.filter(
+        (p) => p.status === 'online' || p.status === 'idle' || p.status === 'dnd',
+      ).size;
+    case 'boosts':
+      return guild.premiumSubscriptionCount ?? 0;
+    default:
+      return null;
+  }
+}
+
+function renderTemplate(template: string, count: number): string {
+  return template.replaceAll('{count}', count.toLocaleString());
+}
+
+async function updateCounterChannels(client: Client): Promise<void> {
+  for (const guild of client.guilds.cache.values()) {
+    let counters;
+    try {
+      counters = await api.listCounterChannels(guild.id);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        log.warn('listCounterChannels API error', { status: err.status, guildId: guild.id });
+      }
+      continue;
+    }
+    for (const counter of counters.counters) {
+      try {
+        const channel = guild.channels.cache.get(counter.channelId);
+        if (!renamableChannel(channel)) continue;
+        const value = computeCounterValue(client, counter.type, guild.id);
+        if (value === null) continue;
+        const rendered = renderTemplate(counter.template, value).slice(0, 100);
+        if (channel!.name === rendered) continue;
+        await channel!.setName(rendered, `Counter update (${counter.type})`);
+      } catch (err) {
+        // Channel renames are heavily rate-limited; log and continue so a
+        // single 429 doesn't stall the rest of the guild's counters.
+        log.warn('Counter rename failed', {
+          guildId: guild.id,
+          channelId: counter.channelId,
           err: String(err),
         });
       }
