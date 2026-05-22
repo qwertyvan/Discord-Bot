@@ -49,6 +49,40 @@ model Guild {
   stickyMessages       StickyMessage[]
   suggestions          Suggestion[]
   caseCounter          CaseCounter?
+  voiceHubs            VoiceHubChannel[]
+  voiceSessions        VoiceSession[]
+}
+
+// Configured "join-to-create" hub voice channels. When a user joins one of
+// these, the bot spawns a fresh child voice channel (cloned to the same
+// category) for them and auto-deletes it once empty.
+model VoiceHubChannel {
+  guildId     String
+  channelId   String   @unique
+  namePattern String   @db.VarChar(64)
+  userLimit   Int?
+  categoryId  String?
+  autoDelete  Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+// One row per active (or recently-ended) voice session. Open sessions have
+// `leftAt = null`; the scheduler reads these to award per-minute voice XP.
+model VoiceSession {
+  id         String    @id @default(uuid())
+  guildId    String
+  userId     String
+  channelId  String
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+
+  guild      Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, userId, leftAt])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every
@@ -456,6 +490,9 @@ model LevelConfig {
   textCooldownSeconds   Int      @default(60)
   // XP awarded per minute of voice activity.
   voiceXpPerMinute      Int      @default(5)
+  // Master switch for the per-minute voice-XP scheduler. When false, the bot
+  // still tracks sessions but doesn't award XP for them.
+  voiceXpEnabled        Boolean  @default(false)
   // Channel for level-up announcements; null = reply in-place.
   levelUpChannelId      String?
   // Defaults to "🎉 {user} just reached level {level}!".

@@ -14,6 +14,7 @@ export const LevelConfigSchema = z.object({
   perMessageXp: z.number().int().min(0).max(1000),
   textCooldownSeconds: z.number().int().min(0).max(3600),
   voiceXpPerMinute: z.number().int().min(0).max(1000),
+  voiceXpEnabled: z.boolean(),
   levelUpChannelId: SnowflakeSchema.nullable(),
   levelUpTemplate: z.string().min(1).max(2000).nullable(),
   channelMultipliers: z.record(SnowflakeSchema, z.number().min(0).max(10)),

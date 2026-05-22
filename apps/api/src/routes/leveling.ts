@@ -18,6 +18,7 @@ interface SerializableConfig {
   perMessageXp: number;
   textCooldownSeconds: number;
   voiceXpPerMinute: number;
+  voiceXpEnabled?: boolean;
   levelUpChannelId: string | null;
   levelUpTemplate: string | null;
   channelMultipliers: unknown;
@@ -33,6 +34,7 @@ function serializeConfig(guildId: string, cfg: SerializableConfig | null) {
     perMessageXp: cfg?.perMessageXp ?? 15,
     textCooldownSeconds: cfg?.textCooldownSeconds ?? 60,
     voiceXpPerMinute: cfg?.voiceXpPerMinute ?? 5,
+    voiceXpEnabled: cfg?.voiceXpEnabled ?? false,
     levelUpChannelId: cfg?.levelUpChannelId ?? null,
     levelUpTemplate: cfg?.levelUpTemplate ?? null,
     channelMultipliers: (cfg?.channelMultipliers as Record<string, number>) ?? {},
@@ -70,6 +72,7 @@ export const levelingRoutes: FastifyPluginAsyncZod = async (app) => {
         'perMessageXp',
         'textCooldownSeconds',
         'voiceXpPerMinute',
+        'voiceXpEnabled',
         'levelUpChannelId',
         'levelUpTemplate',
         'channelMultipliers',
@@ -90,6 +93,7 @@ export const levelingRoutes: FastifyPluginAsyncZod = async (app) => {
           perMessageXp: patch.perMessageXp ?? 15,
           textCooldownSeconds: patch.textCooldownSeconds ?? 60,
           voiceXpPerMinute: patch.voiceXpPerMinute ?? 5,
+          voiceXpEnabled: patch.voiceXpEnabled ?? false,
           levelUpChannelId: patch.levelUpChannelId ?? null,
           levelUpTemplate: patch.levelUpTemplate ?? null,
           channelMultipliers: (patch.channelMultipliers ?? {}) as Prisma.InputJsonValue,

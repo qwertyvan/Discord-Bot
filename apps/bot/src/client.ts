@@ -10,6 +10,7 @@ import { registerLevelingEvents } from './events/leveling.js';
 import { registerMessageActivityEvents } from './events/message-activity.js';
 import { registerTicketActivityEvents } from './events/ticket-activity.js';
 import { registerStickyEvents } from './events/sticky.js';
+import { registerVoiceStateEvents } from './events/voice-state.js';
 import { startScheduler } from './scheduler.js';
 
 export function createClient(): Client {
@@ -36,6 +37,7 @@ export function createClient(): Client {
   registerMessageActivityEvents(client);
   registerTicketActivityEvents(client);
   registerStickyEvents(client);
+  registerVoiceStateEvents(client);
   startScheduler(client);
 
   return client;
