@@ -95,6 +95,9 @@ model Guild {
   autoReactionRules     AutoReactionRule[]
   quoteConfig           QuoteConfig?
   quotes                Quote[]
+  milestoneConfig       MilestoneConfig?
+  tenureRoleRules       TenureRoleRule[]
+  milestoneAwards       MilestoneAward[]
 }
 
 // Per-guild quote-board settings. `savePermission` gates who can right-click
@@ -107,6 +110,23 @@ model QuoteConfig {
   savePermission String   @default("everyone") @db.VarChar(16)
   trustedRoleId  String?
   weeklyDigest   Boolean  @default(false)
+
+  guild          Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Per-guild member-milestone configuration. Drives the daily scheduler sweep
+// that posts joinaversary embeds and the GuildMemberUpdate hook that grants
+// boost rewards. `joinaversaryTemplate` supports {user}, {server}, {years}.
+model MilestoneConfig {
+  guildId                String   @id
+  joinaversaryChannelId  String?
+  joinaversaryTemplate   String?  @db.VarChar(500)
+  joinaversaryReward     Int      @default(0)
+  boostChannelId         String?
+  boostRoleId            String?
+  boostReward            Int      @default(0)
+  enabled                Boolean  @default(false)
+  updatedAt              DateTime @default(now()) @updatedAt
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
@@ -130,6 +150,38 @@ model Quote {
 
   @@unique([guildId, sourceMessageId])
   @@index([guildId, savedAt])
+}
+
+// Auto-grant a role when a member crosses `daysRequired` of tenure in the
+// guild. Reconciled by the daily milestone sweep.
+model TenureRoleRule {
+  id            String   @id @default(uuid())
+  guildId       String
+  roleId        String
+  daysRequired  Int
+  createdAt     DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, roleId])
+  @@index([guildId, daysRequired])
+}
+
+// Idempotency ledger for milestone events so the daily sweep doesn't re-fire
+// joinaversary posts or re-grant tenure roles on subsequent ticks. `kind`
+// is one of: 'joinaversary' | 'boost' | 'tenure' | 'levelup'. The `payload`
+// stores the year (joinaversary), rule id (tenure), or level (levelup).
+model MilestoneAward {
+  id          String   @id @default(uuid())
+  guildId     String
+  userId      String
+  kind        String   @db.VarChar(32)
+  payload     Json?
+  awardedAt   DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, userId, kind])
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of

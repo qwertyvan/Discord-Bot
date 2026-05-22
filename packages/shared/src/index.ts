@@ -37,6 +37,7 @@ export * from './reports.js';
 export * from './templates.js';
 export * from './privacy.js';
 export * from './quotes.js';
+export * from './milestones.js';
 export * from './user.js';
 export * from './errors.js';
 export * from './permissions.js';

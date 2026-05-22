@@ -168,6 +168,13 @@ import type {
   QuoteConfig,
   CreateQuoteInput,
   UpsertQuoteConfigInput,
+  MilestoneConfig,
+  UpsertMilestoneConfigInput,
+  TenureRoleRule,
+  UpsertTenureRoleRuleInput,
+  MilestoneAward,
+  MilestoneAwardKind,
+  CreateMilestoneAwardInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1350,4 +1357,46 @@ export const api = {
     call<InviteGatedRole>(`/guilds/${guildId}/invite-gated-roles`, { method: 'POST', body }),
   deleteInviteGatedRole: (guildId: string, id: string) =>
     call<void>(`/guilds/${guildId}/invite-gated-roles/${id}`, { method: 'DELETE' }),
+  // ─── Member milestones ────────────────────────────────────────────────
+  getMilestoneConfig: (guildId: string) =>
+    call<MilestoneConfig>(`/guilds/${guildId}/milestone-config`),
+  upsertMilestoneConfig: (guildId: string, body: UpsertMilestoneConfigInput) =>
+    call<MilestoneConfig>(`/guilds/${guildId}/milestone-config`, { method: 'PUT', body }),
+
+  listTenureRoles: (guildId: string) =>
+    call<{ rules: TenureRoleRule[] }>(`/guilds/${guildId}/tenure-roles`),
+  createTenureRole: (guildId: string, body: UpsertTenureRoleRuleInput) =>
+    call<TenureRoleRule>(`/guilds/${guildId}/tenure-roles`, { method: 'POST', body }),
+  updateTenureRole: (
+    guildId: string,
+    ruleId: string,
+    body: Partial<UpsertTenureRoleRuleInput>,
+  ) =>
+    call<TenureRoleRule>(`/guilds/${guildId}/tenure-roles/${ruleId}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteTenureRole: (guildId: string, ruleId: string) =>
+    call<void>(`/guilds/${guildId}/tenure-roles/${ruleId}`, { method: 'DELETE' }),
+  deleteTenureRoleByRoleId: (guildId: string, roleId: string) =>
+    call<void>(`/guilds/${guildId}/tenure-roles/by-role/${roleId}`, { method: 'DELETE' }),
+
+  listEnabledMilestoneConfigs: () =>
+    call<{ configs: MilestoneConfig[] }>(`/milestone-configs/enabled`),
+  recordMilestoneAward: (guildId: string, body: CreateMilestoneAwardInput) =>
+    call<MilestoneAward>(`/guilds/${guildId}/milestone-awards`, {
+      method: 'POST',
+      body,
+    }),
+  listMilestoneAwards: (
+    guildId: string,
+    query?: { userId?: string; kind?: MilestoneAwardKind; limit?: number },
+  ) =>
+    call<{ awards: MilestoneAward[] }>(`/guilds/${guildId}/milestone-awards`, {
+      query: {
+        ...(query?.userId ? { userId: query.userId } : {}),
+        ...(query?.kind ? { kind: query.kind } : {}),
+        ...(query?.limit !== undefined ? { limit: query.limit } : {}),
+      },
+    }),
 };
