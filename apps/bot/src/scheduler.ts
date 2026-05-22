@@ -31,6 +31,7 @@ const VOICE_XP_TICK_MS = 60_000;
 const ACTIVITY_TICK_MS = 60_000;
 const ACTIVITY_ROLES_TICK_MS = 24 * 60 * 60_000;
 const BACKUP_TICK_MS = 24 * 60 * 60_000;
+const APPEAL_SLA_TICK_MS = 60 * 60_000; // hourly
 
 export function startScheduler(client: Client): void {
   setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
@@ -53,6 +54,7 @@ export function startScheduler(client: Client): void {
   }, ACTIVITY_TICK_MS);
   setInterval(() => sweepActivityRoles(client).catch(noop), ACTIVITY_ROLES_TICK_MS);
   setInterval(() => runDailySnapshots().catch(noop), BACKUP_TICK_MS);
+  setInterval(() => sweepStaleAppeals(client).catch(noop), APPEAL_SLA_TICK_MS);
   setTimeout(() => {
     fireDueReminders(client).catch(noop);
     closeDuePolls(client).catch(noop);
@@ -65,6 +67,7 @@ export function startScheduler(client: Client): void {
     sweepIdleTickets(client).catch(noop);
     sweepActivityRoles(client).catch(noop);
     runDailySnapshots().catch(noop);
+    sweepStaleAppeals(client).catch(noop);
   }, 5_000);
 }
 
@@ -358,6 +361,45 @@ async function sweepSlaReminders(client: Client): Promise<void> {
       await api.markSlaReminderSent(ticket.id).catch(() => {});
     } catch (err) {
       log.warn('SLA reminder failed', { ticketId: ticket.id, err: String(err) });
+    }
+  }
+}
+
+async function sweepStaleAppeals(client: Client): Promise<void> {
+  let due;
+  try {
+    due = await api.staleAppeals();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('staleAppeals API error', { status: err.status });
+    return;
+  }
+  for (const appeal of due.appeals) {
+    try {
+      const guild = client.guilds.cache.get(appeal.guildId);
+      if (!guild) continue;
+      const channel = guild.channels.cache.get(appeal.escalateChannelId);
+      if (!channel || channel.type !== ChannelType.GuildText) continue;
+      const ageHours = Math.floor(
+        (Date.now() - new Date(appeal.createdAt).getTime()) / 3_600_000,
+      );
+      const embed = new EmbedBuilder()
+        .setTitle('⏰ Stale appeal awaiting review')
+        .setColor(0xf59e0b)
+        .setDescription(appeal.message.slice(0, 1000))
+        .addFields(
+          { name: 'Appeal ID', value: `\`${appeal.id}\``, inline: true },
+          { name: 'User', value: `<@${appeal.userId}>`, inline: true },
+          { name: 'Age', value: `${ageHours}h`, inline: true },
+        )
+        .setTimestamp(new Date(appeal.createdAt));
+      if (appeal.modActionId) {
+        embed.addFields({ name: 'Mod action', value: `\`${appeal.modActionId}\``, inline: false });
+      }
+      await (channel as TextChannel)
+        .send({ embeds: [embed], allowedMentions: { parse: [] } })
+        .catch((err) => log.warn('Stale appeal post failed', { id: appeal.id, err: String(err) }));
+    } catch (err) {
+      log.warn('Stale appeal sweep failed', { id: appeal.id, err: String(err) });
     }
   }
 }
