@@ -62,6 +62,7 @@ import { forumStageRoutes } from './routes/forum-stage.js';
 import { antiRaidRoutes } from './routes/anti-raid.js';
 import { reportsRoutes } from './routes/reports.js';
 import { templatesRoutes } from './routes/templates.js';
+import { privacyRoutes } from './routes/privacy.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -151,6 +152,7 @@ export async function buildApp() {
   await app.register(antiRaidRoutes);
   await app.register(reportsRoutes);
   await app.register(templatesRoutes);
+  await app.register(privacyRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);
