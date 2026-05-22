@@ -170,6 +170,11 @@ Persisted state (anything you want to read from the dashboard or survive restart
 - `apps/web` is a standard Next.js app — deploy with `next start` or any Next-compatible platform.
 - Set `NODE_ENV=production` to enable secure cookies (`secure: true`, `sameSite=lax`) and JSON-only logs.
 - Use `npm run prisma:deploy --workspace @discord-bot/api` for production migrations.
+- One-shot bring-up: copy `.env.example` → `.env`, fill in secrets, then `make up`. Caddy serves `api.localhost` / `web.localhost`. See the [Makefile](./Makefile) for `make logs`, `make rebuild`, `make migrate`, `make plugins-list`.
+
+## Plugins
+
+The bot supports drop-in plugins loaded from `plugins/*` on startup. Each plugin is a folder with a `plugin.json` manifest plus an `index.js` running inside a `node:vm` sandbox — no fs, no bot token, and no live discord.js objects. Hooks: `onMessage`, `onCommand`, `onMemberJoin`. See [PLUGINS.md](./PLUGINS.md) for the full manifest schema, hook signatures, and permission model. A working example lives in [`plugins/hello-world/`](./plugins/hello-world).
 
 ## License
 
