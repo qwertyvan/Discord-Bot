@@ -6,6 +6,7 @@ import {
   FeedKindSchema,
   SnowflakeSchema,
   UpdateFeedLastItemSchema,
+  type FeedKind,
 } from '@discord-bot/shared';
 import { HttpError } from '../errors.js';
 
@@ -16,7 +17,7 @@ function serializeFeed(s: FeedSubscription) {
   return {
     id: s.id,
     guildId: s.guildId,
-    kind: s.kind as 'youtube' | 'reddit' | 'bluesky' | 'mastodon',
+    kind: s.kind as FeedKind,
     identifier: s.identifier,
     channelId: s.channelId,
     template: s.template,

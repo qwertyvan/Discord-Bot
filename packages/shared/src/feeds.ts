@@ -1,7 +1,16 @@
 import { z } from 'zod';
 import { SnowflakeSchema } from './snowflake.js';
 
-export const FeedKindSchema = z.enum(['youtube', 'reddit', 'bluesky', 'mastodon']);
+export const FeedKindSchema = z.enum([
+  'youtube',
+  'reddit',
+  'bluesky',
+  'mastodon',
+  'kick',
+  'trovo',
+  'steam',
+  'github-stars',
+]);
 export type FeedKind = z.infer<typeof FeedKindSchema>;
 
 export const FeedSubscriptionSchema = z.object({
@@ -42,6 +51,29 @@ const MastodonAddress = z
   .min(4)
   .max(200)
   .regex(/^@?[a-z0-9_.-]+@[a-z0-9.-]+\.[a-z]{2,}$/i, 'Use @user@instance.tld for Mastodon.');
+// Kick slugs are lowercase letters, digits, and underscores; up to 25 chars.
+const KickSlug = z
+  .string()
+  .min(2)
+  .max(25)
+  .regex(/^[a-z0-9_]+$/i, 'Kick channel slugs are alphanumeric/underscore.');
+// Trovo usernames are alphanumeric/underscore.
+const TrovoUsername = z
+  .string()
+  .min(2)
+  .max(50)
+  .regex(/^[a-z0-9_]+$/i, 'Trovo usernames are alphanumeric/underscore.');
+// Steam appids are positive integers.
+const SteamAppId = z
+  .string()
+  .regex(/^[0-9]{1,10}$/, 'Steam appid must be a numeric id (e.g. 730).');
+// GitHub "owner/repo" — owner allows hyphens; repo allows ._- and digits.
+const GithubRepo = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/,
+    'GitHub identifier must look like owner/repo.',
+  );
 
 export const CreateFeedSubscriptionSchema = z
   .object({
@@ -51,14 +83,26 @@ export const CreateFeedSubscriptionSchema = z
     template: z.string().min(1).max(500).optional(),
   })
   .superRefine((val, ctx) => {
-    const result =
-      val.kind === 'youtube'
-        ? YoutubeChannelId.safeParse(val.identifier)
-        : val.kind === 'reddit'
-          ? SubredditName.safeParse(val.identifier)
-          : val.kind === 'bluesky'
-            ? BlueskyHandle.safeParse(val.identifier)
-            : MastodonAddress.safeParse(val.identifier);
+    const result = (() => {
+      switch (val.kind) {
+        case 'youtube':
+          return YoutubeChannelId.safeParse(val.identifier);
+        case 'reddit':
+          return SubredditName.safeParse(val.identifier);
+        case 'bluesky':
+          return BlueskyHandle.safeParse(val.identifier);
+        case 'mastodon':
+          return MastodonAddress.safeParse(val.identifier);
+        case 'kick':
+          return KickSlug.safeParse(val.identifier);
+        case 'trovo':
+          return TrovoUsername.safeParse(val.identifier);
+        case 'steam':
+          return SteamAppId.safeParse(val.identifier);
+        case 'github-stars':
+          return GithubRepo.safeParse(val.identifier);
+      }
+    })();
     if (!result.success) {
       for (const issue of result.error.issues) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['identifier'], message: issue.message });

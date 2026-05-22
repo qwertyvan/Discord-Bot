@@ -152,6 +152,15 @@ Each `.env.example` is the authoritative reference. The key cross-app ones:
 | `API_BASE_URL` | web | Server-to-server URL the Next.js server uses |
 | `NEXT_PUBLIC_API_BASE_URL` | web | Browser-facing URL (used by the sign-in link) |
 
+### Feeds: required env vars
+
+The public-feed pollers (`/feeds add …`) work without any extra setup for YouTube, Reddit, Bluesky, Mastodon, Kick, Steam, and GitHub stars. A couple of optional vars unlock or harden specific kinds:
+
+| Variable | Where | Notes |
+|---|---|---|
+| `TROVO_CLIENT_ID` | bot | **Optional.** Required for the `trovo` feed kind — Trovo's channel-info endpoint is gated behind a Client-ID header. Without it, Trovo subscriptions stay registered but the poller skips them with a warning. |
+| `GITHUB_TOKEN` | bot | **Optional.** Unauthenticated GitHub API calls are limited to 60/hr per IP; setting any read-scoped PAT lifts that to 5,000/hr and makes the `github-stars` feed reliable on busy bots. |
+
 ## Adding a new slash command
 
 1. Create `apps/bot/src/commands/<group>/<name>.ts` exporting a `SlashCommand`.
