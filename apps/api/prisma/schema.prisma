@@ -89,6 +89,9 @@ model Guild {
   outboundWebhooks      OutboundWebhook[]
   publicApiTokens       PublicApiToken[]
   musicQueue            MusicQueue?
+  inviteCodes           InviteCode[]
+  memberInvites         MemberInvite[]
+  inviteGatedRoles      InviteGatedRole[]
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -1626,6 +1629,61 @@ model DataDeleteRequest {
   guild               Guild?    @relation(fields: [guildId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
+}
+
+// ─── Invite tracker (v0.41.0) ────────────────────────────────────────
+
+// Mirror of Discord's per-guild invite codes. The bot upserts these from the
+// guild.invites cache on InviteCreate / InviteDelete / refresh; we use them to
+// resolve which invite a joining member used (by diffing pre/post `uses`
+// counters) and to drive the leaderboard.
+model InviteCode {
+  code      String    @id
+  guildId   String
+  inviterId String?
+  channelId String?
+  maxUses   Int?
+  uses      Int       @default(0)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  guild     Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+// One row per (guild, user) join recorded by the bot. `inviterId` and
+// `inviteCode` are populated when the bot can identify the inviter from the
+// pre/post-join invite diff. `leftAt` is set on GuildMemberRemove; if the gap
+// between `joinedAt` and `leftAt` is shorter than FAKE_INVITE_GRACE_HOURS,
+// `isFake` is flipped so the leaderboard can discount the inviter.
+model MemberInvite {
+  guildId    String
+  userId     String
+  inviterId  String?
+  inviteCode String?
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+  isFake     Boolean   @default(false)
+
+  guild      Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, inviterId])
+}
+
+// Per-(guild, inviteCode, roleId) rule. When a member joins via `inviteCode`,
+// the bot auto-grants `roleId`. Multiple roles may be configured per code.
+model InviteGatedRole {
+  id         String @id @default(uuid())
+  guildId    String
+  inviteCode String
+  roleId     String
+
+  guild      Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, inviteCode, roleId])
+  @@index([guildId])
 }
 
 // Per-guild data-retention policy. Each *Days field, when set, bounds the

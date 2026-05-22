@@ -153,6 +153,14 @@ import type {
   TemplatePayload,
   RetentionPolicy,
   UpsertRetentionPolicyInput,
+  InviteCode,
+  UpsertInviteCodeInput,
+  InviterLeaderboardEntry,
+  MemberInvite,
+  CreateMemberInviteInput,
+  UpdateMemberInviteInput,
+  InviteGatedRole,
+  UpsertInviteGatedRoleInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1237,4 +1245,28 @@ export const api = {
       messageActivity: number;
       auditEvents: number;
     }>(`/guilds/${guildId}/retention-prune`, { method: 'POST' }),
+
+  // ─── Invite tracker ────────────────────────────────────────────────
+  listInvites: (guildId: string) =>
+    call<{ invites: InviteCode[] }>(`/guilds/${guildId}/invites`),
+  upsertInvite: (guildId: string, body: UpsertInviteCodeInput) =>
+    call<InviteCode>(`/guilds/${guildId}/invites`, { method: 'POST', body }),
+  deleteInvite: (guildId: string, code: string) =>
+    call<void>(`/guilds/${guildId}/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+  inviteLeaderboard: (guildId: string, limit = 25) =>
+    call<{ entries: InviterLeaderboardEntry[] }>(`/guilds/${guildId}/invites/leaderboard`, {
+      query: { limit },
+    }),
+  inviteStatsForUser: (guildId: string, userId: string) =>
+    call<InviterLeaderboardEntry>(`/guilds/${guildId}/invites/by-user/${userId}`),
+  recordMemberInvite: (guildId: string, body: CreateMemberInviteInput) =>
+    call<MemberInvite>(`/guilds/${guildId}/member-invites`, { method: 'POST', body }),
+  updateMemberInvite: (guildId: string, userId: string, body: UpdateMemberInviteInput) =>
+    call<MemberInvite>(`/guilds/${guildId}/member-invites/${userId}`, { method: 'PATCH', body }),
+  listInviteGatedRoles: (guildId: string) =>
+    call<{ rules: InviteGatedRole[] }>(`/guilds/${guildId}/invite-gated-roles`),
+  upsertInviteGatedRole: (guildId: string, body: UpsertInviteGatedRoleInput) =>
+    call<InviteGatedRole>(`/guilds/${guildId}/invite-gated-roles`, { method: 'POST', body }),
+  deleteInviteGatedRole: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/invite-gated-roles/${id}`, { method: 'DELETE' }),
 };
