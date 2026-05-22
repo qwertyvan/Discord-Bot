@@ -49,6 +49,8 @@ model Guild {
   stickyMessages       StickyMessage[]
   suggestions          Suggestion[]
   giveaways            Giveaway[]
+  starboardConfig      StarboardConfig?
+  starboardEntries     StarboardEntry[]
   caseCounter          CaseCounter?
   voiceHubs            VoiceHubChannel[]
   voiceSessions        VoiceSession[]
@@ -589,6 +591,40 @@ model GiveawayWinner {
   giveaway    Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
 
   @@index([giveawayId])
+}
+
+// React-to-pin: when a message gets `threshold` distinct reactions of `emoji`,
+// the bot mirrors it to `channelId` as a starboard entry. NSFW source channels
+// are skipped unless `allowNsfw` is set.
+model StarboardConfig {
+  guildId    String   @id
+  channelId  String?
+  threshold  Int      @default(3)
+  emoji      String   @default("⭐") @db.VarChar(64)
+  allowNsfw  Boolean  @default(false)
+  enabled    Boolean  @default(false)
+  updatedAt  DateTime @updatedAt @default(now())
+
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// One row per source message ever pinned by the starboard. `starboardMessageId`
+// is null until the threshold is first met; afterwards the bot edits that
+// message as the star count grows.
+model StarboardEntry {
+  sourceMessageId    String   @id
+  starboardMessageId String?
+  guildId            String
+  authorId           String
+  channelId          String
+  starCount          Int      @default(0)
+  content            String   @db.VarChar(2000)
+  attachmentUrl      String?  @db.VarChar(2048)
+  firstStarredAt     DateTime @default(now())
+
+  guild              Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, starCount])
 }
 
 model ScheduledAnnouncement {
