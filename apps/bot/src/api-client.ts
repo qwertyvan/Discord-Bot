@@ -63,6 +63,13 @@ import type {
   UpsertVoiceHubInput,
   VoiceSession,
   StartVoiceSessionInput,
+  VoiceClaim,
+  VoiceClaimConfig,
+  VoiceClaimableChannel,
+  CreateVoiceClaimInput,
+  CreateVoiceClaimableChannelInput,
+  UpdateVoiceClaimInput,
+  UpsertVoiceClaimConfigInput,
   SoundboardClip,
   UpsertSoundboardClipInput,
   TtsConfig,
@@ -818,8 +825,36 @@ export const api = {
     call<VoiceSession>(`/guilds/${guildId}/voice-sessions/start`, { method: 'POST', body }),
   endVoiceSession: (guildId: string, sessionId: string) =>
     call<VoiceSession>(`/guilds/${guildId}/voice-sessions/${sessionId}/end`, { method: 'POST' }),
-  activeVoiceSessions: () =>
-    call<{ sessions: VoiceSession[] }>(`/voice-sessions/active`),
+  activeVoiceSessions: () => call<{ sessions: VoiceSession[] }>(`/voice-sessions/active`),
+
+  // Voice claiming (per-channel ownership)
+  getVoiceClaimConfig: (guildId: string) =>
+    call<VoiceClaimConfig>(`/guilds/${guildId}/voice-claim-config`),
+  upsertVoiceClaimConfig: (guildId: string, body: UpsertVoiceClaimConfigInput) =>
+    call<VoiceClaimConfig>(`/guilds/${guildId}/voice-claim-config`, {
+      method: 'PUT',
+      body,
+    }),
+  listVoiceClaimable: (guildId: string) =>
+    call<{ channels: VoiceClaimableChannel[] }>(`/guilds/${guildId}/voice-claimable`),
+  addVoiceClaimable: (guildId: string, body: CreateVoiceClaimableChannelInput) =>
+    call<VoiceClaimableChannel>(`/guilds/${guildId}/voice-claimable`, {
+      method: 'POST',
+      body,
+    }),
+  removeVoiceClaimable: (guildId: string, channelId: string) =>
+    call<void>(`/guilds/${guildId}/voice-claimable/${channelId}`, { method: 'DELETE' }),
+  listVoiceClaims: (guildId: string) =>
+    call<{ claims: VoiceClaim[] }>(`/guilds/${guildId}/voice-claims`),
+  createVoiceClaim: (guildId: string, body: CreateVoiceClaimInput) =>
+    call<VoiceClaim>(`/guilds/${guildId}/voice-claims`, { method: 'POST', body }),
+  deleteVoiceClaim: (guildId: string, channelId: string) =>
+    call<void>(`/guilds/${guildId}/voice-claims/${channelId}`, { method: 'DELETE' }),
+  updateVoiceClaim: (guildId: string, channelId: string, body: UpdateVoiceClaimInput) =>
+    call<VoiceClaim>(`/guilds/${guildId}/voice-claims/${channelId}`, {
+      method: 'PATCH',
+      body,
+    }),
 
   // Soundboard clips
   listClips: (guildId: string) =>
@@ -889,14 +924,11 @@ export const api = {
     ),
 
   // Member activity (bot-bearer)
-  postMemberActivityBatch: (
-    guildId: string,
-    entries: MemberActivityBatchEntry[],
-  ) =>
-    call<{ ok: boolean; count: number }>(
-      `/guilds/${guildId}/member-activity/batch`,
-      { method: 'POST', body: { entries } },
-    ),
+  postMemberActivityBatch: (guildId: string, entries: MemberActivityBatchEntry[]) =>
+    call<{ ok: boolean; count: number }>(`/guilds/${guildId}/member-activity/batch`, {
+      method: 'POST',
+      body: { entries },
+    }),
   listMemberActivity: (guildId: string, query?: { sinceDays?: number; limit?: number }) =>
     call<{ members: MemberActivity[] }>(`/guilds/${guildId}/member-activity`, {
       query: {
@@ -925,8 +957,7 @@ export const api = {
   // ─── Minigames: hangman ─────────────────────────────────────────
   createHangmanGame: (guildId: string, body: CreateHangmanGameInput) =>
     call<HangmanGame>(`/guilds/${guildId}/hangman`, { method: 'POST', body }),
-  getHangmanGame: (id: string) =>
-    call<HangmanGame>(`/hangman/${id}`),
+  getHangmanGame: (id: string) => call<HangmanGame>(`/hangman/${id}`),
   updateHangmanGame: (id: string, body: UpdateHangmanGameInput) =>
     call<HangmanGame>(`/hangman/${id}`, { method: 'PATCH', body }),
 
@@ -983,20 +1014,15 @@ export const api = {
   deleteLadderStepByThreshold: (guildId: string, threshold: number) =>
     call<void>(`/guilds/${guildId}/warn-ladder/by-threshold/${threshold}`, { method: 'DELETE' }),
   getTriggeredLadderStep: (guildId: string, activeWarnings: number) =>
-    call<{ step: WarningLadderStep | null }>(
-      `/guilds/${guildId}/warn-ladder/triggered`,
-      { query: { activeWarnings } },
-    ),
+    call<{ step: WarningLadderStep | null }>(`/guilds/${guildId}/warn-ladder/triggered`, {
+      query: { activeWarnings },
+    }),
 
   // Appeals
   listAppeals: (
     guildId: string,
     query?: { status?: AppealStatus; userId?: string; limit?: number },
-  ) =>
-    call<{ appeals: Appeal[] }>(
-      `/guilds/${guildId}/appeals`,
-      query ? { query } : {},
-    ),
+  ) => call<{ appeals: Appeal[] }>(`/guilds/${guildId}/appeals`, query ? { query } : {}),
   getAppeal: (guildId: string, appealId: string) =>
     call<Appeal>(`/guilds/${guildId}/appeals/${appealId}`),
   createAppeal: (guildId: string, body: CreateAppealInput) =>
@@ -1006,15 +1032,13 @@ export const api = {
       method: 'POST',
       body,
     }),
-  getAppealSla: (guildId: string) =>
-    call<AppealSlaConfig>(`/guilds/${guildId}/appeal-sla`),
+  getAppealSla: (guildId: string) => call<AppealSlaConfig>(`/guilds/${guildId}/appeal-sla`),
   upsertAppealSla: (guildId: string, body: UpsertAppealSlaConfigInput) =>
     call<AppealSlaConfig>(`/guilds/${guildId}/appeal-sla`, { method: 'PUT', body }),
   staleAppeals: (limit = 50) =>
-    call<{ appeals: Array<Appeal & { escalateChannelId: string }> }>(
-      `/appeals/stale`,
-      { query: { limit } },
-    ),
+    call<{ appeals: Array<Appeal & { escalateChannelId: string }> }>(`/appeals/stale`, {
+      query: { limit },
+    }),
   // Outbound webhooks
   listOutboundWebhooks: (guildId: string) =>
     call<{ webhooks: OutboundWebhook[] }>(`/guilds/${guildId}/webhooks`),
@@ -1023,24 +1047,18 @@ export const api = {
       method: 'POST',
       body,
     }),
-  updateOutboundWebhook: (
-    guildId: string,
-    id: string,
-    body: UpdateOutboundWebhookInput,
-  ) =>
+  updateOutboundWebhook: (guildId: string, id: string, body: UpdateOutboundWebhookInput) =>
     call<OutboundWebhook>(`/guilds/${guildId}/webhooks/${id}`, { method: 'PATCH', body }),
   deleteOutboundWebhook: (guildId: string, id: string) =>
     call<void>(`/guilds/${guildId}/webhooks/${id}`, { method: 'DELETE' }),
   listWebhookDeliveries: (guildId: string, id: string, limit = 25) =>
-    call<{ deliveries: WebhookDelivery[] }>(
-      `/guilds/${guildId}/webhooks/${id}/deliveries`,
-      { query: { limit } },
-    ),
+    call<{ deliveries: WebhookDelivery[] }>(`/guilds/${guildId}/webhooks/${id}/deliveries`, {
+      query: { limit },
+    }),
   testOutboundWebhook: (guildId: string, id: string) =>
-    call<{ enqueued: boolean; deliveryId: string }>(
-      `/guilds/${guildId}/webhooks/${id}/test`,
-      { method: 'POST' },
-    ),
+    call<{ enqueued: boolean; deliveryId: string }>(`/guilds/${guildId}/webhooks/${id}/test`, {
+      method: 'POST',
+    }),
 
   // Public API tokens
   listApiTokens: (guildId: string) =>
@@ -1054,11 +1072,7 @@ export const api = {
     call<void>(`/guilds/${guildId}/api-tokens/${tokenId}`, { method: 'DELETE' }),
   // Observability — bot → API heartbeat + counter bumps.
   postHeartbeat: () => call<{ ok: true }>(`/bot/heartbeat`, { method: 'POST', body: {} }),
-  postMetric: (
-    name: string,
-    labels?: Record<string, string | number>,
-    by?: number,
-  ) =>
+  postMetric: (name: string, labels?: Record<string, string | number>, by?: number) =>
     call<{ ok: boolean }>(`/bot/metric`, {
       method: 'POST',
       body: {
@@ -1086,10 +1100,7 @@ export const api = {
     call<MusicQueue>(`/guilds/${guildId}/music/tracks`, { method: 'DELETE' }),
   // Giveaways
   listGiveaways: (guildId: string, query?: { status?: GiveawayStatus; limit?: number }) =>
-    call<{ giveaways: Giveaway[] }>(
-      `/guilds/${guildId}/giveaways`,
-      query ? { query } : {},
-    ),
+    call<{ giveaways: Giveaway[] }>(`/guilds/${guildId}/giveaways`, query ? { query } : {}),
   getGiveaway: (guildId: string, giveawayId: string) =>
     call<Giveaway>(`/guilds/${guildId}/giveaways/${giveawayId}`),
   createGiveaway: (guildId: string, body: CreateGiveawayInput) =>
@@ -1211,10 +1222,7 @@ export const api = {
     call<StaleThreadPolicy>(`/guilds/${guildId}/stale-thread-policy`, { method: 'PUT', body }),
 
   // Stage scheduled events
-  listStageEvents: (
-    guildId: string,
-    query?: { status?: StageEventStatus; limit?: number },
-  ) =>
+  listStageEvents: (guildId: string, query?: { status?: StageEventStatus; limit?: number }) =>
     call<{ events: StageScheduledEvent[] }>(
       `/guilds/${guildId}/stage-events`,
       query ? { query } : {},
@@ -1285,25 +1293,20 @@ export const api = {
   listPublicTemplates: (limit = 50) =>
     call<{ templates: ServerTemplate[] }>(`/templates/public`, { query: { limit } }),
   getTemplate: (id: string, guildId?: string) =>
-    call<ServerTemplate>(
-      `/templates/${id}`,
-      guildId ? { query: { guildId } } : {},
-    ),
+    call<ServerTemplate>(`/templates/${id}`, guildId ? { query: { guildId } } : {}),
   captureTemplate: (guildId: string, body: CreateTemplateInput) =>
     call<ServerTemplate>(`/guilds/${guildId}/templates/capture`, {
       method: 'POST',
       body,
     }),
-  shareTemplate: (id: string) =>
-    call<ServerTemplate>(`/templates/${id}/share`, { method: 'POST' }),
+  shareTemplate: (id: string) => call<ServerTemplate>(`/templates/${id}/share`, { method: 'POST' }),
   diffTemplate: (id: string, targetGuildId: string, body: TemplatePayload) =>
     call<TemplateDiff>(`/templates/${id}/diff`, {
       method: 'POST',
       body,
       query: { targetGuildId },
     }),
-  deleteTemplate: (id: string) =>
-    call<void>(`/templates/${id}`, { method: 'DELETE' }),
+  deleteTemplate: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
   // ─── Privacy / GDPR ────────────────────────────────────────────────
   requestDataExport: (body: { userId: string; guildId?: string }) =>
     call<{
@@ -1333,8 +1336,7 @@ export const api = {
       method: 'PUT',
       body,
     }),
-  listRetentionPolicyGuilds: () =>
-    call<{ guildIds: string[] }>(`/retention-policies`),
+  listRetentionPolicyGuilds: () => call<{ guildIds: string[] }>(`/retention-policies`),
   pruneRetention: (guildId: string) =>
     call<{
       guildId: string;

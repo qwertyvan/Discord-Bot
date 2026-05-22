@@ -47,6 +47,7 @@ import { shortLinksRoutes } from './routes/short-links.js';
 import { customCommandsRoutes } from './routes/custom-commands.js';
 import { communityRoutes } from './routes/community.js';
 import { voiceRoutes } from './routes/voice.js';
+import { voiceClaimRoutes } from './routes/voice-claim.js';
 import { audioRoutes } from './routes/audio.js';
 import { insightsRoutes } from './routes/insights.js';
 import { activityRolesRoutes } from './routes/activity-roles.js';
@@ -143,6 +144,7 @@ export async function buildApp() {
   await app.register(customCommandsRoutes);
   await app.register(communityRoutes);
   await app.register(voiceRoutes);
+  await app.register(voiceClaimRoutes);
   await app.register(audioRoutes);
   await app.register(insightsRoutes);
   await app.register(activityRolesRoutes);
