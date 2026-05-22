@@ -88,6 +88,11 @@ import type {
   RespondRpsChallengeInput,
   ResolveRpsChallengeResult,
   ClaimDailyResult,
+  ConfigSnapshot,
+  ConfigSnapshotDetail,
+  CreateSnapshotInput,
+  SnapshotPolicy,
+  UpsertSnapshotPolicyInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -774,5 +779,31 @@ export const api = {
     call<ClaimDailyResult>(`/guilds/${guildId}/daily/claim`, {
       method: 'POST',
       body: { userId },
+    }),
+
+  // Backup & restore — config snapshots
+  listSnapshots: (guildId: string) =>
+    call<{ snapshots: ConfigSnapshot[] }>(`/guilds/${guildId}/snapshots`),
+  getSnapshot: (guildId: string, snapshotId: string) =>
+    call<ConfigSnapshotDetail>(`/guilds/${guildId}/snapshots/${snapshotId}`),
+  createSnapshot: (guildId: string, body: CreateSnapshotInput) =>
+    call<ConfigSnapshot>(`/guilds/${guildId}/snapshots`, { method: 'POST', body }),
+  restoreSnapshot: (guildId: string, snapshotId: string) =>
+    call<{ restored: boolean; snapshotId: string; tables: Record<string, number> }>(
+      `/guilds/${guildId}/snapshots/${snapshotId}/restore`,
+      { method: 'POST' },
+    ),
+  deleteSnapshot: (guildId: string, snapshotId: string) =>
+    call<void>(`/guilds/${guildId}/snapshots/${snapshotId}`, { method: 'DELETE' }),
+  getSnapshotPolicy: (guildId: string) =>
+    call<SnapshotPolicy>(`/guilds/${guildId}/snapshot-policy`),
+  upsertSnapshotPolicy: (guildId: string, body: UpsertSnapshotPolicyInput) =>
+    call<SnapshotPolicy>(`/guilds/${guildId}/snapshot-policy`, { method: 'PUT', body }),
+  listAutoSnapshotPolicies: () =>
+    call<{ policies: SnapshotPolicy[] }>(`/snapshot-policies/auto-enabled`),
+  pruneSnapshots: (guildId: string, retentionDays: number) =>
+    call<{ pruned: number }>(`/guilds/${guildId}/snapshots/prune`, {
+      method: 'POST',
+      body: { retentionDays },
     }),
 };

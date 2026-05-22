@@ -45,6 +45,7 @@ import { audioRoutes } from './routes/audio.js';
 import { insightsRoutes } from './routes/insights.js';
 import { activityRolesRoutes } from './routes/activity-roles.js';
 import { minigamesRoutes } from './routes/minigames.js';
+import { backupRoutes } from './routes/backup.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -110,6 +111,7 @@ export async function buildApp() {
   await app.register(insightsRoutes);
   await app.register(activityRolesRoutes);
   await app.register(minigamesRoutes);
+  await app.register(backupRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);

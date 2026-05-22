@@ -13,6 +13,7 @@ import { voiceCommands } from './voice/index.js';
 import { audioCommands } from './audio/index.js';
 import { adminCommands } from './admin/index.js';
 import { minigamesCommands } from './minigames/index.js';
+import { backupCommands } from './backup/index.js';
 
 export interface CommandEntry {
   group: string;
@@ -44,6 +45,7 @@ export function getCommandRegistry(): CommandRegistry {
     audio: audioCommands,
     admin: adminCommands,
     minigames: minigamesCommands,
+    backup: backupCommands,
   };
 
   const byName = new Map<string, SlashCommand>();

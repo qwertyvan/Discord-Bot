@@ -64,6 +64,8 @@ model Guild {
   rpsRecords            RpsRecord[]
   rpsChallenges         RpsChallenge[]
   dailyStreaks          DailyStreak[]
+  configSnapshots       ConfigSnapshot[]
+  snapshotPolicy        SnapshotPolicy?
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -306,6 +308,36 @@ model DailyStreak {
 
   @@id([guildId, userId])
   @@index([guildId, streak(sort: Desc)])
+}
+
+// Periodic JSON snapshot of all guild-scoped CONFIG tables. `payload` is a
+// JSON object keyed by Prisma model name, with each value the array of rows
+// for that model belonging to this guild. User data tables (XP rows, ticket
+// content, balances, audit log, etc.) are intentionally excluded.
+model ConfigSnapshot {
+  id         String   @id @default(uuid())
+  guildId    String
+  createdAt  DateTime @default(now())
+  label      String   @db.VarChar(120)
+  payload    Json
+  sizeBytes  Int
+  createdBy  String?
+
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, createdAt])
+}
+
+// Per-guild snapshot scheduling policy. When `autoEnabled` is true the bot's
+// daily scheduler tick creates a fresh snapshot and prunes any older than
+// `retentionDays`.
+model SnapshotPolicy {
+  guildId        String   @id
+  autoEnabled    Boolean  @default(false)
+  retentionDays  Int      @default(30)
+  updatedAt      DateTime @updatedAt @default(now())
+
+  guild          Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every
