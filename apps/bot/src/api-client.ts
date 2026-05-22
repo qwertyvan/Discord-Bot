@@ -59,6 +59,10 @@ import type {
   CreateSuggestionInput,
   ReviewSuggestionInput,
   EmbedBuilderInput,
+  VoiceHubChannel,
+  UpsertVoiceHubInput,
+  VoiceSession,
+  StartVoiceSessionInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -624,4 +628,18 @@ export const api = {
   // Custom embed builder
   postEmbed: (guildId: string, body: EmbedBuilderInput) =>
     call<{ id: string }>(`/guilds/${guildId}/post-embed`, { method: 'POST', body }),
+
+  // Voice hubs & sessions
+  listVoiceHubs: (guildId: string) =>
+    call<{ hubs: VoiceHubChannel[] }>(`/guilds/${guildId}/voice-hubs`),
+  upsertVoiceHub: (guildId: string, body: UpsertVoiceHubInput) =>
+    call<VoiceHubChannel>(`/guilds/${guildId}/voice-hubs`, { method: 'POST', body }),
+  deleteVoiceHub: (guildId: string, channelId: string) =>
+    call<void>(`/guilds/${guildId}/voice-hubs/${channelId}`, { method: 'DELETE' }),
+  startVoiceSession: (guildId: string, body: StartVoiceSessionInput) =>
+    call<VoiceSession>(`/guilds/${guildId}/voice-sessions/start`, { method: 'POST', body }),
+  endVoiceSession: (guildId: string, sessionId: string) =>
+    call<VoiceSession>(`/guilds/${guildId}/voice-sessions/${sessionId}/end`, { method: 'POST' }),
+  activeVoiceSessions: () =>
+    call<{ sessions: VoiceSession[] }>(`/voice-sessions/active`),
 };

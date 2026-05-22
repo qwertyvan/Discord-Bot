@@ -22,6 +22,7 @@ const ANNOUNCE_TICK_MS = 30_000;
 const BIRTHDAY_TICK_MS = 5 * 60_000;
 const SLA_TICK_MS = 60_000;
 const IDLE_TICK_MS = 5 * 60_000;
+const VOICE_XP_TICK_MS = 60_000;
 
 export function startScheduler(client: Client): void {
   setInterval(() => fireDueReminders(client).catch(noop), REMINDER_TICK_MS);
@@ -33,6 +34,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => fireBirthdays(client).catch(noop), BIRTHDAY_TICK_MS);
   setInterval(() => sweepSlaReminders(client).catch(noop), SLA_TICK_MS);
   setInterval(() => sweepIdleTickets(client).catch(noop), IDLE_TICK_MS);
+  setInterval(() => awardActiveVoiceXp(client).catch(noop), VOICE_XP_TICK_MS);
   setTimeout(() => {
     fireDueReminders(client).catch(noop);
     closeDuePolls(client).catch(noop);
@@ -397,6 +399,80 @@ async function sweepIdleTickets(client: Client): Promise<void> {
       }
     } catch (err) {
       log.warn('Idle auto-close failed', { ticketId: ticket.id, err: String(err) });
+    }
+  }
+}
+
+// Per-minute voice XP for members in populated voice channels. We pull the
+// list of currently-open voice sessions from the API, then for each one
+// check the live channel state to confirm there are ≥2 humans and the
+// member isn't fully deafened before awarding XP. We use the leveling
+// awardVoiceXp helper with minutes=1 so the existing XP/level-up logic
+// (role rewards, leveled-up announce) keeps applying.
+async function awardActiveVoiceXp(client: Client): Promise<void> {
+  let active;
+  try {
+    active = await api.activeVoiceSessions();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('activeVoiceSessions API error', { status: err.status });
+    return;
+  }
+
+  // Cache per-guild level config for this tick to avoid hammering the API.
+  const configCache = new Map<
+    string,
+    { voiceXpEnabled: boolean; voiceXpPerMinute: number; noXpRoleIds: string[] } | null
+  >();
+  async function getConfig(guildId: string) {
+    if (configCache.has(guildId)) return configCache.get(guildId) ?? null;
+    try {
+      const cfg = await api.getLevelConfig(guildId);
+      const entry = {
+        voiceXpEnabled: cfg.voiceXpEnabled,
+        voiceXpPerMinute: cfg.voiceXpPerMinute,
+        noXpRoleIds: cfg.noXpRoleIds,
+      };
+      configCache.set(guildId, entry);
+      return entry;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        configCache.set(guildId, null);
+        return null;
+      }
+      log.warn('getLevelConfig failed', { guildId, err: String(err) });
+      configCache.set(guildId, null);
+      return null;
+    }
+  }
+
+  for (const session of active.sessions) {
+    try {
+      const cfg = await getConfig(session.guildId);
+      if (!cfg || !cfg.voiceXpEnabled || cfg.voiceXpPerMinute <= 0) continue;
+
+      const guild = client.guilds.cache.get(session.guildId);
+      if (!guild) continue;
+
+      const channel = guild.channels.cache.get(session.channelId);
+      if (!channel || !channel.isVoiceBased()) continue;
+
+      const member = channel.members.get(session.userId);
+      if (!member) continue;
+      if (member.user.bot) continue;
+      if (member.voice.selfDeaf || member.voice.deaf) continue;
+      // Exclude no-XP roles.
+      if (cfg.noXpRoleIds.some((roleId) => member.roles.cache.has(roleId))) continue;
+
+      // Need ≥2 non-bot humans in the channel for it to count as populated.
+      const humans = channel.members.filter((m) => !m.user.bot).size;
+      if (humans < 2) continue;
+
+      await api.awardVoiceXp(session.guildId, { userId: session.userId, minutes: 1 });
+    } catch (err) {
+      log.warn('awardActiveVoiceXp tick failed', {
+        sessionId: session.id,
+        err: String(err),
+      });
     }
   }
 }

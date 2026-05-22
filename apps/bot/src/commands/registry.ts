@@ -9,6 +9,7 @@ import { scheduledCommands } from './scheduled/index.js';
 import { communityCommands } from './community/index.js';
 import { utilityCommands } from './utility/index.js';
 import { funCommands } from './fun/index.js';
+import { voiceCommands } from './voice/index.js';
 
 export interface CommandEntry {
   group: string;
@@ -36,6 +37,7 @@ export function getCommandRegistry(): CommandRegistry {
     community: communityCommands,
     utility: utilityCommands,
     fun: funCommands,
+    voice: voiceCommands,
   };
 
   const byName = new Map<string, SlashCommand>();
