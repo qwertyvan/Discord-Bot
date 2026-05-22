@@ -6,7 +6,7 @@ import { levelingCommands } from './leveling/index.js';
 import { economyCommands } from './economy/index.js';
 import { ticketCommands } from './tickets/index.js';
 import { scheduledCommands } from './scheduled/index.js';
-import { communityCommands } from './community/index.js';
+import { communityCommands, communityContextCommands } from './community/index.js';
 import { starboardCommands } from './starboard/index.js';
 import { forumStageCommands } from './forum-stage/index.js';
 import { utilityCommands } from './utility/index.js';
@@ -75,6 +75,7 @@ export function getCommandRegistry(): CommandRegistry {
 
   const contextGroups: Record<string, MessageContextCommand[]> = {
     safety: safetyContextCommands,
+    community: communityContextCommands,
   };
 
   const byName = new Map<string, SlashCommand>();

@@ -93,6 +93,43 @@ model Guild {
   memberInvites         MemberInvite[]
   inviteGatedRoles      InviteGatedRole[]
   autoReactionRules     AutoReactionRule[]
+  quoteConfig           QuoteConfig?
+  quotes                Quote[]
+}
+
+// Per-guild quote-board settings. `savePermission` gates who can right-click
+// "Save quote": "everyone" (no gate), "trusted-role" (must hold `trustedRoleId`),
+// or "mods" (must have ManageMessages). `channelId` is where the weekly digest
+// embed is posted when `weeklyDigest` is true.
+model QuoteConfig {
+  guildId        String   @id
+  channelId      String?
+  savePermission String   @default("everyone") @db.VarChar(16)
+  trustedRoleId  String?
+  weeklyDigest   Boolean  @default(false)
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// One saved quote. `reactionCount` is the snapshotted reactor count on the
+// source message at save-time and can be bumped later by the bot; the weekly
+// digest sorts by this. `savedBy` is the member who invoked "Save quote".
+model Quote {
+  id              String   @id @default(uuid())
+  guildId         String
+  sourceMessageId String
+  sourceChannelId String
+  authorId        String
+  savedBy         String
+  content         String   @db.VarChar(2000)
+  attachmentUrl   String?  @db.VarChar(2048)
+  savedAt         DateTime @default(now())
+  reactionCount   Int      @default(0)
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, sourceMessageId])
+  @@index([guildId, savedAt])
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of

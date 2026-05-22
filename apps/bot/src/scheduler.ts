@@ -24,6 +24,7 @@ import { renderTranscript } from './integrations/ticket-transcript.js';
 import { activityBatcher } from './util/activity-batcher.js';
 import { tickVoiceMinutes } from './events/insights.js';
 import { sweepStarboardDigest, STARBOARD_DIGEST_TICK_MS } from './util/starboard-digest.js';
+import { sweepQuoteDigest, QUOTE_DIGEST_TICK_MS } from './util/quote-digest.js';
 import { clearLockdown, listActiveLockdowns } from './util/anti-raid-state.js';
 
 const REMINDER_TICK_MS = 10_000;
@@ -82,6 +83,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop), APPEAL_SLA_TICK_MS);
   setInterval(() => tick('giveaways', () => endDueGiveaways(client))().catch(noop), GIVEAWAY_TICK_MS);
   setInterval(() => tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop), STARBOARD_DIGEST_TICK_MS);
+  setInterval(() => tick('quote-digest', () => sweepQuoteDigest(client))().catch(noop), QUOTE_DIGEST_TICK_MS);
   setInterval(() => tick('counters', () => updateCounterChannels(client))().catch(noop), COUNTERS_TICK_MS);
   setInterval(() => tick('feeds', () => pollPublicFeeds())().catch(noop), FEEDS_TICK_MS);
   setInterval(() => tick('stale-threads', () => sweepStaleThreads(client))().catch(noop), STALE_THREAD_TICK_MS);
@@ -104,6 +106,7 @@ export function startScheduler(client: Client): void {
     tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop);
     tick('giveaways', () => endDueGiveaways(client))().catch(noop);
     tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop);
+    tick('quote-digest', () => sweepQuoteDigest(client))().catch(noop);
     tick('counters', () => updateCounterChannels(client))().catch(noop);
     tick('feeds', () => pollPublicFeeds())().catch(noop);
     tick('stale-threads', () => sweepStaleThreads(client))().catch(noop);

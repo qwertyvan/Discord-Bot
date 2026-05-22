@@ -164,6 +164,10 @@ import type {
   AutoReactionRule,
   CreateAutoReactionRuleInput,
   UpdateAutoReactionRuleInput,
+  Quote,
+  QuoteConfig,
+  CreateQuoteInput,
+  UpsertQuoteConfigInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -718,6 +722,68 @@ export const api = {
       method: 'POST',
       body,
     }),
+
+  // Quotes
+  getQuoteConfig: (guildId: string) =>
+    call<QuoteConfig>(`/guilds/${guildId}/quote-config`),
+  upsertQuoteConfig: (guildId: string, body: UpsertQuoteConfigInput) =>
+    call<QuoteConfig>(`/guilds/${guildId}/quote-config`, { method: 'PUT', body }),
+  listQuotes: (
+    guildId: string,
+    query?: { authorId?: string; savedBy?: string; search?: string; limit?: number; offset?: number },
+  ) =>
+    call<{ quotes: Quote[]; total: number }>(
+      `/guilds/${guildId}/quotes`,
+      query
+        ? {
+            query: {
+              ...(query.authorId !== undefined ? { authorId: query.authorId } : {}),
+              ...(query.savedBy !== undefined ? { savedBy: query.savedBy } : {}),
+              ...(query.search !== undefined ? { search: query.search } : {}),
+              ...(query.limit !== undefined ? { limit: query.limit } : {}),
+              ...(query.offset !== undefined ? { offset: query.offset } : {}),
+            },
+          }
+        : {},
+    ),
+  getRandomQuote: (guildId: string, authorId?: string) =>
+    call<Quote>(
+      `/guilds/${guildId}/quotes/random`,
+      authorId ? { query: { authorId } } : {},
+    ),
+  getQuote: (guildId: string, quoteId: string) =>
+    call<Quote>(`/guilds/${guildId}/quotes/${quoteId}`),
+  createQuote: (guildId: string, body: CreateQuoteInput) =>
+    call<Quote>(`/guilds/${guildId}/quotes`, { method: 'POST', body }),
+  updateQuoteReactionCount: (guildId: string, quoteId: string, reactionCount: number) =>
+    call<Quote>(`/guilds/${guildId}/quotes/${quoteId}`, {
+      method: 'PATCH',
+      body: { reactionCount },
+    }),
+  deleteQuote: (
+    guildId: string,
+    quoteId: string,
+    query: { requesterId: string; force?: boolean },
+  ) =>
+    call<void>(`/guilds/${guildId}/quotes/${quoteId}`, {
+      method: 'DELETE',
+      query: {
+        requesterId: query.requesterId,
+        ...(query.force ? { force: '1' } : {}),
+      },
+    }),
+  topQuotes: (guildId: string, query?: { days?: number; limit?: number }) =>
+    call<{ quotes: Quote[] }>(
+      `/guilds/${guildId}/quotes/top`,
+      query
+        ? {
+            query: {
+              ...(query.days !== undefined ? { days: query.days } : {}),
+              ...(query.limit !== undefined ? { limit: query.limit } : {}),
+            },
+          }
+        : {},
+    ),
 
   // Custom embed builder
   postEmbed: (guildId: string, body: EmbedBuilderInput) =>
