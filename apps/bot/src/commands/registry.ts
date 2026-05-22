@@ -6,6 +6,7 @@ import { levelingCommands } from './leveling/index.js';
 import { economyCommands } from './economy/index.js';
 import { ticketCommands } from './tickets/index.js';
 import { scheduledCommands } from './scheduled/index.js';
+import { communityCommands } from './community/index.js';
 import { utilityCommands } from './utility/index.js';
 import { funCommands } from './fun/index.js';
 
@@ -32,6 +33,7 @@ export function getCommandRegistry(): CommandRegistry {
     economy: economyCommands,
     tickets: ticketCommands,
     scheduled: scheduledCommands,
+    community: communityCommands,
     utility: utilityCommands,
     fun: funCommands,
   };

@@ -53,6 +53,12 @@ import type {
   CustomCommand,
   CreateCustomCommandInput,
   UpdateCustomCommandInput,
+  StickyMessage,
+  UpsertStickyMessageInput,
+  Suggestion,
+  CreateSuggestionInput,
+  ReviewSuggestionInput,
+  EmbedBuilderInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -565,4 +571,57 @@ export const api = {
     body: { userId: string; status: 'yes' | 'maybe' | 'no' },
   ) =>
     call<GuildEvent>(`/guilds/${guildId}/events/${eventId}/rsvp`, { method: 'POST', body }),
+
+  // Sticky messages
+  listStickyMessages: (guildId: string) =>
+    call<{ sticky: StickyMessage[] }>(`/guilds/${guildId}/sticky-messages`),
+  getStickyMessage: (guildId: string, channelId: string) =>
+    call<StickyMessage>(`/guilds/${guildId}/sticky-messages/${channelId}`),
+  upsertStickyMessage: (guildId: string, body: UpsertStickyMessageInput) =>
+    call<StickyMessage>(`/guilds/${guildId}/sticky-messages`, { method: 'PUT', body }),
+  updateStickyLastMessage: (
+    guildId: string,
+    channelId: string,
+    body: { lastMessageId: string | null },
+  ) =>
+    call<StickyMessage>(`/guilds/${guildId}/sticky-messages/${channelId}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteStickyMessage: (guildId: string, channelId: string) =>
+    call<void>(`/guilds/${guildId}/sticky-messages/${channelId}`, { method: 'DELETE' }),
+
+  // Suggestions
+  listSuggestions: (
+    guildId: string,
+    query?: { status?: 'open' | 'accepted' | 'rejected' | 'implemented'; limit?: number },
+  ) =>
+    call<{ suggestions: Suggestion[] }>(
+      `/guilds/${guildId}/suggestions`,
+      query ? { query } : {},
+    ),
+  getSuggestion: (guildId: string, suggestionId: string) =>
+    call<Suggestion>(`/guilds/${guildId}/suggestions/${suggestionId}`),
+  createSuggestion: (guildId: string, body: CreateSuggestionInput) =>
+    call<Suggestion>(`/guilds/${guildId}/suggestions`, { method: 'POST', body }),
+  updateSuggestion: (guildId: string, suggestionId: string, body: { messageId?: string | null }) =>
+    call<Suggestion>(`/guilds/${guildId}/suggestions/${suggestionId}`, { method: 'PATCH', body }),
+  reviewSuggestion: (guildId: string, suggestionId: string, body: ReviewSuggestionInput) =>
+    call<Suggestion>(`/guilds/${guildId}/suggestions/${suggestionId}/review`, {
+      method: 'POST',
+      body,
+    }),
+  voteSuggestion: (
+    guildId: string,
+    suggestionId: string,
+    body: { userId: string; vote: number },
+  ) =>
+    call<Suggestion>(`/guilds/${guildId}/suggestions/${suggestionId}/vote`, {
+      method: 'POST',
+      body,
+    }),
+
+  // Custom embed builder
+  postEmbed: (guildId: string, body: EmbedBuilderInput) =>
+    call<{ id: string }>(`/guilds/${guildId}/post-embed`, { method: 'POST', body }),
 };

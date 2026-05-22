@@ -9,6 +9,7 @@ import { registerAutoResponseEvents } from './events/auto-response.js';
 import { registerLevelingEvents } from './events/leveling.js';
 import { registerMessageActivityEvents } from './events/message-activity.js';
 import { registerTicketActivityEvents } from './events/ticket-activity.js';
+import { registerStickyEvents } from './events/sticky.js';
 import { startScheduler } from './scheduler.js';
 
 export function createClient(): Client {
@@ -34,6 +35,7 @@ export function createClient(): Client {
   registerLevelingEvents(client);
   registerMessageActivityEvents(client);
   registerTicketActivityEvents(client);
+  registerStickyEvents(client);
   startScheduler(client);
 
   return client;

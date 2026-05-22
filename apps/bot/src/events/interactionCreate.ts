@@ -14,6 +14,7 @@ import { log } from '../logger.js';
 import { getCommandRegistry } from '../commands/registry.js';
 import { api, ApiError } from '../api-client.js';
 import { pollMessagePayload } from '../util/poll-render.js';
+import { suggestionMessagePayload } from '../util/suggestion-render.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -71,6 +72,10 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('rsvp:')) {
           await handleRsvp(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('sgst:')) {
+          await handleSuggestionVote(interaction);
           return;
         }
       }
@@ -346,6 +351,33 @@ async function handleRsvp(interaction: ButtonInteraction): Promise<void> {
     await interaction.editReply(`${label} for **${updated.title}**.`);
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Failed to RSVP.';
+    await interaction.editReply(msg);
+  }
+}
+
+async function handleSuggestionVote(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId || !interaction.guild) return;
+  const [, direction, suggestionId] = interaction.customId.split(':');
+  if (!suggestionId || (direction !== 'up' && direction !== 'down')) return;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const updated = await api.voteSuggestion(interaction.guildId, suggestionId, {
+      userId: interaction.user.id,
+      vote: direction === 'up' ? 1 : -1,
+    });
+    if (updated.messageId && updated.channelId) {
+      const channel = interaction.guild.channels.cache.get(updated.channelId);
+      if (channel && channel.type === ChannelType.GuildText) {
+        const message = await (channel as TextChannel).messages
+          .fetch(updated.messageId)
+          .catch(() => null);
+        if (message) await message.edit(suggestionMessagePayload(updated)).catch(() => {});
+      }
+    }
+    await interaction.editReply(`${direction === 'up' ? '👍' : '👎'} Vote recorded.`);
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Vote failed.';
     await interaction.editReply(msg);
   }
 }
