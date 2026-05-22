@@ -66,6 +66,9 @@ model Guild {
   dailyStreaks          DailyStreak[]
   configSnapshots       ConfigSnapshot[]
   snapshotPolicy        SnapshotPolicy?
+  warningLadderSteps    WarningLadderStep[]
+  appeals               Appeal[]
+  appealSlaConfig       AppealSlaConfig?
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -338,6 +341,53 @@ model SnapshotPolicy {
   updatedAt      DateTime @updatedAt @default(now())
 
   guild          Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Configurable per-guild warning escalation ladder. After each warning the
+// API picks the highest threshold ≤ active warn count and tells the bot to
+// apply `action` (mute / kick / ban). `durationMinutes` is honoured only for
+// `mute` (mapped to Discord timeout).
+model WarningLadderStep {
+  id              String  @id @default(uuid())
+  guildId         String
+  threshold       Int
+  action          String  @db.VarChar(16) // 'mute' | 'kick' | 'ban'
+  durationMinutes Int?
+
+  guild           Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, threshold])
+  @@index([guildId])
+}
+
+// User-submitted appeal against a moderation action (or a generic appeal).
+// Reviewed by staff with a note + DM back to the user.
+model Appeal {
+  id           String    @id @default(uuid())
+  guildId      String
+  userId       String
+  modActionId  String?
+  message      String    @db.VarChar(2000)
+  // 'open' | 'approved' | 'denied'
+  status       String    @default("open") @db.VarChar(16)
+  reviewNote   String?   @db.VarChar(500)
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  guild        Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status, createdAt])
+}
+
+// Per-guild appeal SLA config: open appeals older than `warnHours` get a
+// reminder embed posted to `escalateChannelId` (if set) on each hourly tick.
+model AppealSlaConfig {
+  guildId           String  @id
+  warnHours         Int     @default(24)
+  escalateChannelId String?
+
+  guild             Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every

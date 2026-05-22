@@ -10,6 +10,7 @@ import { checkModerationHierarchy } from './_hierarchy.js';
 import { buildModActionEmbed } from '../../util/mod-action-embed.js';
 import { log } from '../../logger.js';
 import { applyEscalation } from './_escalation.js';
+import { applyLadderEscalation } from './_ladder.js';
 
 export const warn: SlashCommand = {
   data: new SlashCommandBuilder()
@@ -79,6 +80,25 @@ export const warn: SlashCommand = {
         );
         if (result) {
           await interaction.followUp({ embeds: [buildModActionEmbed(result, target, interaction.user)] });
+        }
+      } else if (targetMember) {
+        // Evaluate the v0.27 configurable warn ladder. Wrapped to never throw
+        // out of the warn flow.
+        try {
+          const ladderResult = await applyLadderEscalation(
+            interaction.guild,
+            targetMember,
+            interaction.user,
+          );
+          if (ladderResult) {
+            await interaction.followUp({
+              embeds: [buildModActionEmbed(ladderResult, target, interaction.user)],
+            });
+          }
+        } catch (err) {
+          log.warn('Warn ladder escalation failed', {
+            err: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     } catch (err) {

@@ -93,6 +93,14 @@ import type {
   CreateSnapshotInput,
   SnapshotPolicy,
   UpsertSnapshotPolicyInput,
+  Appeal,
+  AppealSlaConfig,
+  AppealStatus,
+  CreateAppealInput,
+  ReviewAppealInput,
+  UpsertAppealSlaConfigInput,
+  UpsertLadderStepInput,
+  WarningLadderStep,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -806,4 +814,46 @@ export const api = {
       method: 'POST',
       body: { retentionDays },
     }),
+  // Warning ladder
+  listLadder: (guildId: string) =>
+    call<{ steps: WarningLadderStep[] }>(`/guilds/${guildId}/warn-ladder`),
+  upsertLadderStep: (guildId: string, body: UpsertLadderStepInput) =>
+    call<WarningLadderStep>(`/guilds/${guildId}/warn-ladder`, { method: 'POST', body }),
+  deleteLadderStep: (guildId: string, stepId: string) =>
+    call<void>(`/guilds/${guildId}/warn-ladder/${stepId}`, { method: 'DELETE' }),
+  deleteLadderStepByThreshold: (guildId: string, threshold: number) =>
+    call<void>(`/guilds/${guildId}/warn-ladder/by-threshold/${threshold}`, { method: 'DELETE' }),
+  getTriggeredLadderStep: (guildId: string, activeWarnings: number) =>
+    call<{ step: WarningLadderStep | null }>(
+      `/guilds/${guildId}/warn-ladder/triggered`,
+      { query: { activeWarnings } },
+    ),
+
+  // Appeals
+  listAppeals: (
+    guildId: string,
+    query?: { status?: AppealStatus; userId?: string; limit?: number },
+  ) =>
+    call<{ appeals: Appeal[] }>(
+      `/guilds/${guildId}/appeals`,
+      query ? { query } : {},
+    ),
+  getAppeal: (guildId: string, appealId: string) =>
+    call<Appeal>(`/guilds/${guildId}/appeals/${appealId}`),
+  createAppeal: (guildId: string, body: CreateAppealInput) =>
+    call<Appeal>(`/guilds/${guildId}/appeals`, { method: 'POST', body }),
+  reviewAppeal: (guildId: string, appealId: string, body: ReviewAppealInput) =>
+    call<Appeal>(`/guilds/${guildId}/appeals/${appealId}/review`, {
+      method: 'POST',
+      body,
+    }),
+  getAppealSla: (guildId: string) =>
+    call<AppealSlaConfig>(`/guilds/${guildId}/appeal-sla`),
+  upsertAppealSla: (guildId: string, body: UpsertAppealSlaConfigInput) =>
+    call<AppealSlaConfig>(`/guilds/${guildId}/appeal-sla`, { method: 'PUT', body }),
+  staleAppeals: (limit = 50) =>
+    call<{ appeals: Array<Appeal & { escalateChannelId: string }> }>(
+      `/appeals/stale`,
+      { query: { limit } },
+    ),
 };
