@@ -107,6 +107,12 @@ import type {
   WebhookDelivery,
   PublicApiToken,
   CreatePublicApiTokenInput,
+  AddTrackInput,
+  LoopMode,
+  MoveTrackInput,
+  MusicQueue,
+  MusicTrack,
+  SetQueueStateInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -914,4 +920,21 @@ export const api = {
         ...(by !== undefined ? { by } : {}),
       },
     }),
+  // Music queue
+  getQueue: (guildId: string) => call<MusicQueue>(`/guilds/${guildId}/music`),
+  setQueueState: (guildId: string, body: SetQueueStateInput) =>
+    call<MusicQueue>(`/guilds/${guildId}/music`, { method: 'PATCH', body }),
+  setLoopMode: (guildId: string, loopMode: LoopMode) =>
+    call<MusicQueue>(`/guilds/${guildId}/music`, { method: 'PATCH', body: { loopMode } }),
+  addTrack: (guildId: string, body: AddTrackInput) =>
+    call<MusicTrack>(`/guilds/${guildId}/music/tracks`, { method: 'POST', body }),
+  removeTrack: (guildId: string, trackId: string) =>
+    call<void>(`/guilds/${guildId}/music/tracks/${trackId}`, { method: 'DELETE' }),
+  moveTrack: (guildId: string, body: MoveTrackInput) =>
+    call<{ tracks: MusicTrack[] }>(`/guilds/${guildId}/music/tracks/move`, {
+      method: 'POST',
+      body,
+    }),
+  clearQueue: (guildId: string) =>
+    call<MusicQueue>(`/guilds/${guildId}/music/tracks`, { method: 'DELETE' }),
 };

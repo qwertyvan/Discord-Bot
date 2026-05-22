@@ -71,6 +71,7 @@ model Guild {
   appealSlaConfig       AppealSlaConfig?
   outboundWebhooks      OutboundWebhook[]
   publicApiTokens       PublicApiToken[]
+  musicQueue            MusicQueue?
 }
 
 // Configured "join-to-create" hub voice channels. When a user joins one of
@@ -452,6 +453,41 @@ model PublicApiToken {
   guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@index([guildId])
+}
+
+// Per-guild music playback state. One row per guild. Tracks belong to this
+// queue via MusicTrack.guildId. Survives bot restarts so the queue isn't
+// lost on deploy; the bot picks up from currentIndex on resume.
+model MusicQueue {
+  guildId      String   @id
+  // Voice channel the bot is connected to (or last connected to).
+  channelId    String?
+  // Position within the tracks list the player is currently on.
+  currentIndex Int      @default(0)
+  // Player volume 0-100.
+  volume       Int      @default(50)
+  // 'off' | 'track' | 'queue'.
+  loopMode     String   @default("off") @db.VarChar(8)
+  updatedAt    DateTime @updatedAt
+
+  guild       Guild        @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  musicTracks MusicTrack[]
+}
+
+model MusicTrack {
+  id          String   @id @default(uuid())
+  guildId     String
+  // Display order within the queue. The bot keeps this contiguous starting at 0.
+  position    Int
+  title       String   @db.VarChar(300)
+  url         String   @db.VarChar(2048)
+  durationSec Int?
+  requesterId String
+  addedAt     DateTime @default(now())
+
+  queue MusicQueue @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, position])
 }
 
 // Channel-pinned "sticky" message: the bot reposts it to the bottom every
