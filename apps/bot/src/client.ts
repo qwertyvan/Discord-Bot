@@ -16,6 +16,7 @@ import { registerMessageCreatePluginBridge } from './events/messageCreate.js';
 import { registerGuildMemberAddPluginBridge } from './events/guildMemberAdd.js';
 import { registerStarboardEvents } from './events/messageReaction.js';
 import { registerThreadCreate } from './events/threadCreate.js';
+import { registerGuildMemberAdd } from './events/guildMemberAdd.js';
 import { startScheduler } from './scheduler.js';
 import { scanPluginsDir } from './plugins/index.js';
 import { log } from './logger.js';
@@ -62,6 +63,7 @@ export function createClient(): Client {
   registerGuildMemberAddPluginBridge(client);
   registerStarboardEvents(client);
   registerThreadCreate(client);
+  registerGuildMemberAdd(client);
   startScheduler(client);
 
   // Load plugins after the gateway is ready. Doing this in `once(ready)`

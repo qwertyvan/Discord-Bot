@@ -136,6 +136,13 @@ import type {
   StageScheduledEvent,
   CreateStageEventInput,
   StageEventStatus,
+  AntiRaidConfig,
+  UpsertAntiRaidConfigInput,
+  LockdownEvent,
+  PendingVerification,
+  CreatePendingVerificationInput,
+  VerifyChallengeInput,
+  VerifyChallengeResult,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1092,4 +1099,39 @@ export const api = {
     }),
   deleteStageEvent: (guildId: string, eventId: string) =>
     call<void>(`/guilds/${guildId}/stage-events/${eventId}`, { method: 'DELETE' }),
+  // Anti-raid / captcha
+  getAntiRaidConfig: (guildId: string) =>
+    call<AntiRaidConfig>(`/guilds/${guildId}/anti-raid-config`),
+  upsertAntiRaidConfig: (guildId: string, body: UpsertAntiRaidConfigInput) =>
+    call<AntiRaidConfig>(`/guilds/${guildId}/anti-raid-config`, { method: 'PUT', body }),
+  listLockdownEvents: (guildId: string, limit = 50) =>
+    call<{ events: LockdownEvent[] }>(`/guilds/${guildId}/lockdown-events`, {
+      query: { limit },
+    }),
+  startLockdown: (guildId: string, trigger: string) =>
+    call<LockdownEvent>(`/guilds/${guildId}/lockdown/start`, {
+      method: 'POST',
+      body: { trigger },
+    }),
+  endLockdown: (guildId: string, id: string, joinsBlocked?: number) =>
+    call<LockdownEvent>(`/guilds/${guildId}/lockdown/${id}/end`, {
+      method: 'POST',
+      body: joinsBlocked !== undefined ? { joinsBlocked } : {},
+    }),
+  createPendingVerification: (guildId: string, body: CreatePendingVerificationInput) =>
+    call<PendingVerification>(`/guilds/${guildId}/pending-verifications`, {
+      method: 'POST',
+      body,
+    }),
+  getPendingVerification: (guildId: string, userId: string) =>
+    call<PendingVerification>(`/guilds/${guildId}/pending-verifications/${userId}`),
+  deletePendingVerification: (guildId: string, userId: string) =>
+    call<void>(`/guilds/${guildId}/pending-verifications/${userId}`, { method: 'DELETE' }),
+  expiredPendingVerifications: () =>
+    call<{ pending: PendingVerification[] }>(`/pending-verifications/expired`),
+  verifyChallenge: (guildId: string, userId: string, body: VerifyChallengeInput) =>
+    call<VerifyChallengeResult>(`/guilds/${guildId}/pending-verifications/${userId}/verify`, {
+      method: 'POST',
+      body,
+    }),
 };
