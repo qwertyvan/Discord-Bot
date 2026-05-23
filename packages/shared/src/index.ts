@@ -53,3 +53,4 @@ export * from './karaoke.js';
 export * from './profile.js';
 export * from './achievements.js';
 export * from './marketplace.js';
+export * from './auctions.js';

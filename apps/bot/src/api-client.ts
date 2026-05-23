@@ -242,6 +242,11 @@ import type {
   CreateListingInput,
   UpsertMarketConfigInput,
   MarketListingStatus,
+  Auction,
+  AuctionBid,
+  AuctionStatus,
+  CreateAuctionInput,
+  PlaceBidInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1855,6 +1860,39 @@ export const api = {
     }),
   sweepExpiredListings: () =>
     call<{ expired: MarketListing[] }>(`/marketplace/sweep-expired`, {
+      method: 'POST',
+    }),
+
+  // Auctions (v0.57) — bid-based item sales on inventory items.
+  listAuctions: (
+    guildId: string,
+    query?: { status?: AuctionStatus; limit?: number },
+  ) =>
+    call<{ auctions: Auction[] }>(
+      `/guilds/${guildId}/auctions`,
+      query ? { query } : {},
+    ),
+  getAuction: (guildId: string, auctionId: string) =>
+    call<Auction>(`/guilds/${guildId}/auctions/${auctionId}`),
+  createAuction: (guildId: string, body: CreateAuctionInput) =>
+    call<Auction>(`/guilds/${guildId}/auctions`, { method: 'POST', body }),
+  placeBid: (guildId: string, auctionId: string, body: PlaceBidInput) =>
+    call<{ auction: Auction; bid: AuctionBid; extended: boolean }>(
+      `/guilds/${guildId}/auctions/${auctionId}/bid`,
+      { method: 'POST', body },
+    ),
+  cancelAuction: (guildId: string, auctionId: string, sellerId: string) =>
+    call<Auction>(`/guilds/${guildId}/auctions/${auctionId}/cancel`, {
+      method: 'POST',
+      body: { sellerId },
+    }),
+  dueAuctions: (limit = 50) =>
+    call<{ auctions: Auction[] }>(`/auctions/due`, {
+      method: 'POST',
+      body: { limit },
+    }),
+  settleAuction: (guildId: string, auctionId: string) =>
+    call<Auction>(`/guilds/${guildId}/auctions/${auctionId}/settle`, {
       method: 'POST',
     }),
 };
