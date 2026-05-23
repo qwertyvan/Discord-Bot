@@ -17,6 +17,7 @@ import { registerInsightsEvents } from './events/insights.js';
 import { registerMessageCreatePluginBridge } from './events/messageCreate.js';
 import { registerGuildMemberAddPluginBridge } from './events/guildMemberAdd.js';
 import { registerStarboardEvents } from './events/messageReaction.js';
+import { registerQuestEvents } from './events/quests.js';
 import { registerThreadCreate } from './events/threadCreate.js';
 import { registerGuildMemberAdd } from './events/guildMemberAdd.js';
 import { registerInviteTracking } from './events/inviteTracking.js';
@@ -70,6 +71,7 @@ export function createClient(): Client {
   registerMessageCreatePluginBridge(client);
   registerGuildMemberAddPluginBridge(client);
   registerStarboardEvents(client);
+  registerQuestEvents(client);
   registerThreadCreate(client);
   registerGuildMemberAdd(client);
   registerInviteTracking(client);

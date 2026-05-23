@@ -23,6 +23,8 @@ import type { FeedKind } from '@discord-bot/shared';
 import { renderTranscript } from './integrations/ticket-transcript.js';
 import { activityBatcher } from './util/activity-batcher.js';
 import { tickVoiceMinutes } from './events/insights.js';
+import { tickQuestVoiceMinutes } from './events/quests.js';
+import { questBus } from './util/quest-bus.js';
 import { sweepStarboardDigest, STARBOARD_DIGEST_TICK_MS } from './util/starboard-digest.js';
 import { sweepQuoteDigest, QUOTE_DIGEST_TICK_MS } from './util/quote-digest.js';
 import { clearLockdown, listActiveLockdowns } from './util/anti-raid-state.js';
@@ -45,6 +47,7 @@ const BACKUP_TICK_MS = 24 * 60 * 60_000;
 const APPEAL_SLA_TICK_MS = 60 * 60_000; // hourly
 const MILESTONES_TICK_MS = 24 * 60 * 60_000; // daily
 const PET_DECAY_TICK_MS = 60 * 60_000; // hourly
+const QUESTS_TICK_MS = 60 * 60_000; // hourly
 
 const HEARTBEAT_TICK_MS = 30_000;
 
@@ -78,8 +81,10 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('voice-xp', () => awardActiveVoiceXp(client))().catch(noop), VOICE_XP_TICK_MS);
   setInterval(() => tick('activity', async () => {
     try { tickVoiceMinutes(client); } catch (err) { log.warn('tickVoiceMinutes error', { err: String(err) }); }
+    try { tickQuestVoiceMinutes(client); } catch (err) { log.warn('tickQuestVoiceMinutes error', { err: String(err) }); }
     await activityBatcher.flushAll();
   })().catch(noop), ACTIVITY_TICK_MS);
+  setInterval(() => tick('quests', () => sweepQuests())().catch(noop), QUESTS_TICK_MS);
   setInterval(() => tick('activity-roles', () => sweepActivityRoles(client))().catch(noop), ACTIVITY_ROLES_TICK_MS);
   setInterval(() => tick('backup', () => runDailySnapshots())().catch(noop), BACKUP_TICK_MS);
   setInterval(() => tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop), APPEAL_SLA_TICK_MS);
@@ -1324,6 +1329,29 @@ async function fireJoinaversary(
         err: String(err),
       }),
     );
+}
+
+/**
+ * Hourly quest tick. Flushes any debounced progress events still queued
+ * in the per-guild questBus and asks the API to delete UserQuest rows
+ * whose deadline has passed without a claim — so the next /quest list
+ * can pull in a fresh assignment from the enabled templates.
+ */
+async function sweepQuests(): Promise<void> {
+  try {
+    await questBus.flushAll();
+  } catch (err) {
+    log.warn('questBus.flushAll failed', { err: String(err) });
+  }
+  try {
+    await api.expireUserQuests();
+  } catch (err) {
+    if (err instanceof ApiError) {
+      log.warn('expireUserQuests API error', { status: err.status });
+    } else {
+      log.warn('expireUserQuests error', { err: String(err) });
+    }
+  }
 }
 
 /**
