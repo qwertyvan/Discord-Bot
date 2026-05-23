@@ -108,6 +108,7 @@ model Guild {
   onboardingForms       OnboardingForm[]
   applications          Application[]
   karaokeNights         KaraokeNight[]
+  auctions              Auction[]
   marketConfig          MarketConfig?
   marketListings        MarketListing[]
   questTemplates        QuestTemplate[]
@@ -1397,6 +1398,7 @@ model ShopItem {
   inventory      InventoryEntry[]
   lootDrops      LootDrop[]
   marketListings MarketListing[]
+  auctions       Auction[]
 
   @@unique([guildId, slug])
   @@unique([guildId, name])
@@ -2279,4 +2281,52 @@ model MarketConfig {
   maxActiveListingsPerUser Int     @default(10)
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Open-bid timed auctions on shop/inventory items. The seller escrows the
+// item up-front; bidders' currency is escrowed on each bid and refunded when
+// they are outbid. Settlement happens via the scheduler when endsAt passes:
+// the winner gets the item, the seller gets the funds. Anti-snipe extends
+// endsAt by 60s when a bid lands in the last 60s.
+//
+// status: 'active' | 'ended' | 'cancelled'
+model Auction {
+  id                String       @id @default(uuid())
+  guildId           String
+  sellerId          String
+  itemId            String
+  quantity          Int          @default(1)
+  startPriceCents   Int
+  minIncrementCents Int          @default(1)
+  // Highest bid so far (0 if no bids placed yet).
+  currentBidCents   Int          @default(0)
+  // Highest bidder's user id (null if no bids placed).
+  currentBidderId   String?
+  endsAt            DateTime
+  status            String       @default("active") @db.VarChar(16)
+  createdAt         DateTime     @default(now())
+  settledAt         DateTime?
+
+  guild Guild        @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  item  ShopItem     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  bids  AuctionBid[]
+
+  @@index([guildId, status, endsAt])
+}
+
+// One bid per row. `escrowedCents` records the funds locked at the moment
+// the bid was placed (== amountCents at bid time). When outbid the row is
+// refunded and `refundedAt` is stamped so the settlement step can skip it.
+model AuctionBid {
+  id            String    @id @default(uuid())
+  auctionId     String
+  userId        String
+  amountCents   Int
+  escrowedCents Int
+  placedAt      DateTime  @default(now())
+  refundedAt    DateTime?
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId, placedAt])
 }

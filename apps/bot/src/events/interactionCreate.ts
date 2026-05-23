@@ -27,6 +27,7 @@ import {
 import { hangmanMessagePayload } from '../commands/minigames/hangman.js';
 import { dispatchOnCommand } from '../plugins/index.js';
 import { giveawayMessagePayload } from '../util/giveaway-render.js';
+import { auctionMessagePayload } from '../util/auction-render.js';
 import { applicationMessagePayload } from '../util/application-render.js';
 import { renderBlackjack } from '../commands/economy/blackjack.js';
 import { buildCategoryEmbed, buildCategorySelect } from '../commands/utility/help.js';
@@ -118,6 +119,10 @@ export function registerInteractionCreate(client: Client): void {
           await handleProfileEditModal(interaction);
           return;
         }
+        if (interaction.customId.startsWith('auc:bid-modal:')) {
+          await handleAuctionBidModal(interaction);
+          return;
+        }
       }
 
       if (interaction.isButton()) {
@@ -179,6 +184,14 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('ka:add:')) {
           await handleKaraokeAddButton(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('auc:bid:')) {
+          await handleAuctionBidButton(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('auc:bid-custom:')) {
+          await handleAuctionBidCustomButton(interaction);
           return;
         }
       }
@@ -1098,6 +1111,36 @@ async function handleKaraokeRsvp(interaction: ButtonInteraction): Promise<void> 
   }
 }
 
+// "auc:bid:<id>:<amount>" — quick-bid button. The amount is embedded in the
+// custom id so we don't need to refetch on click; the API revalidates anyway.
+async function handleAuctionBidButton(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const [, , auctionId, amountStr] = interaction.customId.split(':');
+  if (!auctionId || !amountStr) return;
+  const amount = Number(amountStr);
+  if (!Number.isFinite(amount) || amount <= 0) return;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const result = await api.placeBid(interaction.guildId, auctionId, {
+      userId: interaction.user.id,
+      amountCents: amount,
+    });
+    // Refresh the source message with the updated auction state. Loading
+    // bids from the result keeps the embed's recent-bids list current.
+    await interaction.message
+      .edit(auctionMessagePayload(result.auction, result.auction.bids ?? []))
+      .catch(() => {});
+    const note = result.extended ? ' (anti-snipe: timer +60s)' : '';
+    await interaction.editReply(
+      `✅ Bid of ${amount.toLocaleString()} placed${note}.`,
+    );
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Bid failed.';
+    await interaction.editReply(msg);
+  }
+}
+
 async function handleKaraokeAddButton(interaction: ButtonInteraction): Promise<void> {
   // ka:add:<nightId>
   const nightId = interaction.customId.slice('ka:add:'.length);
@@ -1120,6 +1163,27 @@ async function handleKaraokeAddButton(interaction: ButtonInteraction): Promise<v
   modal.addComponents(
     new ActionRowBuilder<TextInputBuilder>().addComponents(titleInput),
     new ActionRowBuilder<TextInputBuilder>().addComponents(urlInput),
+  );
+  await interaction.showModal(modal);
+}
+
+// "auc:bid-custom:<id>" — opens a modal for the bidder to type any amount.
+async function handleAuctionBidCustomButton(
+  interaction: ButtonInteraction,
+): Promise<void> {
+  const auctionId = interaction.customId.slice('auc:bid-custom:'.length);
+  if (!auctionId) return;
+  const modal = new ModalBuilder()
+    .setCustomId(`auc:bid-modal:${auctionId}`)
+    .setTitle('Place a custom bid');
+  const input = new TextInputBuilder()
+    .setCustomId('amount')
+    .setLabel('Bid amount')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(12);
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(input),
   );
   await interaction.showModal(modal);
 }
@@ -1149,6 +1213,46 @@ async function handleKaraokeAddModal(interaction: ModalSubmitInteraction): Promi
     await interaction.editReply(`🎵 Added **${title}** to the queue (\`${song.id}\`).`);
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Failed to add song.';
+    await interaction.editReply(msg);
+  }
+}
+
+// "auc:bid-modal:<id>" — modal submit handler for custom bids.
+async function handleAuctionBidModal(
+  interaction: ModalSubmitInteraction,
+): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const auctionId = interaction.customId.slice('auc:bid-modal:'.length);
+  if (!auctionId) return;
+  const raw = interaction.fields.getTextInputValue('amount').trim();
+  const amount = Number(raw.replace(/[\s,_]/g, ''));
+  if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
+    await interaction.reply({
+      content: 'Bid amount must be a positive whole number.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const result = await api.placeBid(interaction.guildId, auctionId, {
+      userId: interaction.user.id,
+      amountCents: amount,
+    });
+    // If the modal was opened from an embed message, message will be set;
+    // we update it best-effort.
+    if (interaction.message) {
+      await interaction.message
+        .edit(auctionMessagePayload(result.auction, result.auction.bids ?? []))
+        .catch(() => {});
+    }
+    const note = result.extended ? ' (anti-snipe: timer +60s)' : '';
+    await interaction.editReply(
+      `✅ Bid of ${amount.toLocaleString()} placed${note}.`,
+    );
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Bid failed.';
     await interaction.editReply(msg);
   }
 }

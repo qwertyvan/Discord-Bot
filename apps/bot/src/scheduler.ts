@@ -37,6 +37,7 @@ const TWITCH_TICK_MS = 60_000;
 const FEEDS_TICK_MS = 5 * 60_000;
 const ANNOUNCE_TICK_MS = 30_000;
 const GIVEAWAY_TICK_MS = 30_000;
+const AUCTION_TICK_MS = 30_000;
 const BIRTHDAY_TICK_MS = 5 * 60_000;
 const SLA_TICK_MS = 60_000;
 const IDLE_TICK_MS = 5 * 60_000;
@@ -90,6 +91,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('backup', () => runDailySnapshots())().catch(noop), BACKUP_TICK_MS);
   setInterval(() => tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop), APPEAL_SLA_TICK_MS);
   setInterval(() => tick('giveaways', () => endDueGiveaways(client))().catch(noop), GIVEAWAY_TICK_MS);
+  setInterval(() => tick('auctions', () => settleDueAuctions())().catch(noop), AUCTION_TICK_MS);
   setInterval(() => tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop), STARBOARD_DIGEST_TICK_MS);
   setInterval(() => tick('quote-digest', () => sweepQuoteDigest(client))().catch(noop), QUOTE_DIGEST_TICK_MS);
   setInterval(() => tick('counters', () => updateCounterChannels(client))().catch(noop), COUNTERS_TICK_MS);
@@ -117,6 +119,7 @@ export function startScheduler(client: Client): void {
     tick('backup', () => runDailySnapshots())().catch(noop);
     tick('appeal-sla', () => sweepStaleAppeals(client))().catch(noop);
     tick('giveaways', () => endDueGiveaways(client))().catch(noop);
+    tick('auctions', () => settleDueAuctions())().catch(noop);
     tick('starboard-digest', () => sweepStarboardDigest(client))().catch(noop);
     tick('quote-digest', () => sweepQuoteDigest(client))().catch(noop);
     tick('counters', () => updateCounterChannels(client))().catch(noop);
@@ -335,6 +338,26 @@ async function endDueGiveaways(client: Client): Promise<void> {
         .catch(() => {});
     } catch (err) {
       log.warn('Giveaway end failed', { id: g.id, err: String(err) });
+    }
+  }
+}
+
+// Settle every auction past endsAt. The API does the heavy lifting:
+// item escrow → winner inventory, currency escrow → seller balance, refund
+// stale losing bids. We just poll, settle, and shrug at errors per item.
+async function settleDueAuctions(): Promise<void> {
+  let due;
+  try {
+    due = await api.dueAuctions();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('dueAuctions API error', { status: err.status });
+    return;
+  }
+  for (const a of due.auctions) {
+    try {
+      await api.settleAuction(a.guildId, a.id);
+    } catch (err) {
+      log.warn('Auction settle failed', { id: a.id, err: String(err) });
     }
   }
 }

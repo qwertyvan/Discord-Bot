@@ -1,3 +1,4 @@
+import { auction } from './auction.js';
 import { balance } from './balance.js';
 import { blackjack } from './blackjack.js';
 import { buy } from './buy.js';
@@ -32,4 +33,5 @@ export const economyCommands = [
   dice,
   loot,
   market,
+  auction,
 ];

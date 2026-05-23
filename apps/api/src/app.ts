@@ -62,6 +62,7 @@ import { webhooksOutRoutes } from './routes/webhooks-out.js';
 import { publicRoutes } from './routes/public.js';
 import { musicRoutes } from './routes/music.js';
 import { giveawaysRoutes } from './routes/giveaways.js';
+import { auctionsRoutes } from './routes/auctions.js';
 import { starboardRoutes } from './routes/starboard.js';
 import { countersRoutes } from './routes/counters.js';
 import { forumStageRoutes } from './routes/forum-stage.js';
@@ -169,6 +170,7 @@ export async function buildApp() {
   await app.register(publicRoutes);
   await app.register(musicRoutes);
   await app.register(giveawaysRoutes);
+  await app.register(auctionsRoutes);
   await app.register(starboardRoutes);
   await app.register(countersRoutes);
   await app.register(forumStageRoutes);
