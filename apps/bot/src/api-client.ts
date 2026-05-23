@@ -182,6 +182,11 @@ import type {
   MilestoneAward,
   MilestoneAwardKind,
   CreateMilestoneAwardInput,
+  QuestTemplate,
+  CreateQuestTemplateInput,
+  UpdateQuestTemplateInput,
+  UserQuest,
+  ProgressEvent,
   Application,
   ApplicationStatus,
   CreateApplicationInput,
@@ -1773,4 +1778,35 @@ export const api = {
       `/guilds/${guildId}/achievements/seed`,
       { method: 'POST' },
     ),
+  // ─── Quests ─────────────────────────────────────────────────────────
+  listQuestTemplates: (guildId: string) =>
+    call<{ templates: QuestTemplate[] }>(`/guilds/${guildId}/quest-templates`),
+  createQuestTemplate: (guildId: string, body: CreateQuestTemplateInput) =>
+    call<QuestTemplate>(`/guilds/${guildId}/quest-templates`, { method: 'POST', body }),
+  updateQuestTemplate: (guildId: string, slug: string, body: UpdateQuestTemplateInput) =>
+    call<QuestTemplate>(`/guilds/${guildId}/quest-templates/${slug}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteQuestTemplate: (guildId: string, slug: string) =>
+    call<void>(`/guilds/${guildId}/quest-templates/${slug}`, { method: 'DELETE' }),
+  seedQuestTemplates: (guildId: string) =>
+    call<{ inserted: string[]; skipped: string[] }>(
+      `/guilds/${guildId}/quest-templates/seed`,
+      { method: 'POST' },
+    ),
+  getUserQuests: (guildId: string, userId: string) =>
+    call<{ quests: UserQuest[] }>(`/guilds/${guildId}/user-quests/${userId}`),
+  postQuestProgress: (guildId: string, body: ProgressEvent) =>
+    call<{ updated: UserQuest[] }>(`/guilds/${guildId}/user-quests/progress`, {
+      method: 'POST',
+      body,
+    }),
+  claimUserQuest: (guildId: string, id: string) =>
+    call<{
+      quest: UserQuest;
+      rewards: { currency: number; xp: number; roleId: string | null };
+    }>(`/guilds/${guildId}/user-quests/${id}/claim`, { method: 'POST' }),
+  expireUserQuests: () =>
+    call<{ deleted: number }>(`/quests/expire`, { method: 'POST' }),
 };

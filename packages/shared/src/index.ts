@@ -40,6 +40,7 @@ export * from './templates.js';
 export * from './privacy.js';
 export * from './quotes.js';
 export * from './milestones.js';
+export * from './quests.js';
 export * from './onboarding-forms.js';
 export * from './server-pet.js';
 export * from './user.js';

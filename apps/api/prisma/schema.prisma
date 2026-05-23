@@ -108,6 +108,8 @@ model Guild {
   onboardingForms       OnboardingForm[]
   applications          Application[]
   karaokeNights         KaraokeNight[]
+  questTemplates        QuestTemplate[]
+  userQuests            UserQuest[]
   achievements          Achievement[]
   userAchievements      UserAchievement[]
   userProfiles          UserProfile[]
@@ -2182,4 +2184,57 @@ model UserAchievement {
 
   @@id([guildId, userId, achievementId])
   @@index([guildId, userId])
+}
+
+// Per-guild quest template. Each template defines an objective (kind +
+// targetCount) and the rewards a member earns when they complete it. The
+// `cadence` is 'daily' or 'weekly'; the API auto-assigns enabled templates
+// to a member as `UserQuest` rows when they first request their quest list
+// in a period.
+model QuestTemplate {
+  id              String   @id @default(uuid())
+  guildId         String
+  slug            String   @db.VarChar(48)
+  name            String   @db.VarChar(120)
+  description     String?  @db.VarChar(500)
+  // One of: 'send_messages' | 'react_messages' | 'send_in_channel' |
+  // 'voice_minutes' | 'send_image' | 'complete_other_quest'.
+  kind            String   @db.VarChar(32)
+  targetCount     Int      @default(1)
+  targetChannelId String?
+  // 'daily' | 'weekly'
+  cadence         String   @db.VarChar(8)
+  rewardCurrency  Int      @default(0)
+  rewardXp        Int      @default(0)
+  rewardRoleId    String?
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  guild      Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userQuests UserQuest[]
+
+  @@unique([guildId, slug])
+  @@index([guildId, cadence, enabled])
+}
+
+// Per-(member, template) quest assignment for one period. `expiresAt` is
+// 24h after `periodStartedAt` for dailies and 7d for weeklies; the
+// scheduler hourly tick deletes unclaimed expired rows so a fresh
+// assignment can be created on the member's next /quest list.
+model UserQuest {
+  id              String    @id @default(uuid())
+  guildId         String
+  userId          String
+  templateId      String
+  progress        Int       @default(0)
+  completedAt     DateTime?
+  claimedAt       DateTime?
+  periodStartedAt DateTime  @default(now())
+  expiresAt       DateTime
+
+  guild    Guild         @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  template QuestTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, userId, templateId, periodStartedAt])
+  @@index([guildId, userId, expiresAt])
 }
