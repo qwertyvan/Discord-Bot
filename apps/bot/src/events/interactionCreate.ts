@@ -196,6 +196,10 @@ export function registerInteractionCreate(client: Client): void {
           await handleHelpCategorySelect(interaction);
           return;
         }
+        if (interaction.customId === 'market:view') {
+          await handleMarketViewSelect(interaction);
+          return;
+        }
       }
     } catch (err) {
       log.error('Interaction handler threw', {
@@ -1025,6 +1029,30 @@ async function handleProfileEditModal(interaction: ModalSubmitInteraction): Prom
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Failed to update profile.';
     await interaction.editReply(msg);
+  }
+}
+
+async function handleMarketViewSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const id = interaction.values[0];
+  if (!id) {
+    await interaction.deferUpdate().catch(() => {});
+    return;
+  }
+  try {
+    const listing = await api.getListing(interaction.guildId, id);
+    const { buildListingEmbed } = await import('../util/listing-render.js');
+    const seller = await interaction.client.users
+      .fetch(listing.sellerId)
+      .catch(() => null);
+    await interaction.reply({
+      content: `Run \`/market buy ${listing.id}\` to confirm purchase.`,
+      embeds: [buildListingEmbed(listing, listing.item ?? null, seller)],
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to load listing.';
+    await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
   }
 }
 

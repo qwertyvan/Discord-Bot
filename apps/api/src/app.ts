@@ -79,6 +79,7 @@ import { serverPetRoutes } from './routes/server-pet.js';
 import { profileRoutes } from './routes/profile.js';
 import { achievementsRoutes } from './routes/achievements.js';
 import { questsRoutes } from './routes/quests.js';
+import { marketplaceRoutes } from './routes/marketplace.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -185,6 +186,7 @@ export async function buildApp() {
   await app.register(profileRoutes);
   await app.register(achievementsRoutes);
   await app.register(questsRoutes);
+  await app.register(marketplaceRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);
