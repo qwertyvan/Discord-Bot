@@ -215,6 +215,10 @@ import type {
   CreateKaraokeSongInput,
   UpdateKaraokeSongInput,
   UpsertKaraokeRsvpInput,
+  ServerPet,
+  UpsertPetNameInput,
+  PetActionResult,
+  TopFeederResponse,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1648,4 +1652,29 @@ export const api = {
       starting: KaraokeNight[];
       endingLive: KaraokeNight[];
     }>(`/karaoke-nights/due`),
+  // Server pet
+  getServerPet: (guildId: string) => call<ServerPet>(`/guilds/${guildId}/server-pet`),
+  renamePet: (guildId: string, body: UpsertPetNameInput) =>
+    call<ServerPet>(`/guilds/${guildId}/server-pet`, { method: 'PATCH', body }),
+  feedPet: (guildId: string, userId: string, currencySpent: number) =>
+    call<PetActionResult>(`/guilds/${guildId}/server-pet/feed`, {
+      method: 'POST',
+      body: { userId, currencySpent },
+    }),
+  playWithPet: (guildId: string, userId: string) =>
+    call<PetActionResult>(`/guilds/${guildId}/server-pet/play`, {
+      method: 'POST',
+      body: { userId },
+    }),
+  petPet: (guildId: string, userId: string) =>
+    call<PetActionResult>(`/guilds/${guildId}/server-pet/pet`, {
+      method: 'POST',
+      body: { userId },
+    }),
+  topPetFeeder: (guildId: string, limit = 5) =>
+    call<TopFeederResponse>(`/guilds/${guildId}/server-pet/top-feeder`, {
+      query: { limit },
+    }),
+  tickServerPetDecay: () =>
+    call<{ scanned: number; updated: number }>(`/server-pet/tick/decay`, { method: 'POST' }),
 };
