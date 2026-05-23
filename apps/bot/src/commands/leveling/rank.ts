@@ -48,9 +48,13 @@ export const rank: SlashCommand = {
       const cur = stats.xp - stats.currentLevelXp;
       const span = Math.max(1, stats.nextLevelXp - stats.currentLevelXp);
       const progress = cur / span;
+      const prestigePrefix = stats.prestige > 0 ? `⭐ P${stats.prestige} · ` : '';
       const embed = new EmbedBuilder()
         .setAuthor({ name: target.tag, iconURL: target.displayAvatarURL() })
         .setColor(0x5865f2)
+        .setDescription(
+          `${prestigePrefix}Level **${stats.level}** · **${stats.xp.toLocaleString()}** XP`,
+        )
         .addFields(
           { name: 'Level', value: String(stats.level), inline: true },
           { name: 'XP', value: stats.xp.toLocaleString(), inline: true },
@@ -58,6 +62,9 @@ export const rank: SlashCommand = {
           { name: 'Progress', value: `\`${bar(progress)}\` ${cur} / ${span} XP` },
           { name: 'Voice', value: `${stats.voiceMinutes} min`, inline: true },
         );
+      if (stats.prestige > 0) {
+        embed.addFields({ name: 'Prestige', value: `⭐ P${stats.prestige}`, inline: true });
+      }
       await interaction.editReply({ embeds: [embed] });
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Failed to fetch rank.';

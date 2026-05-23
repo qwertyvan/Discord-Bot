@@ -30,6 +30,7 @@ import type {
   UpdateWelcomeConfigInput,
   LevelConfig,
   UpdateLevelConfigInput,
+  PrestigeInfo,
   Balance,
   EconomyConfig,
   InventoryEntry,
@@ -506,6 +507,8 @@ export const api = {
       rank: number | null;
       currentLevelXp: number;
       nextLevelXp: number;
+      prestige: number;
+      prestigedAt: string | null;
     }>(`/guilds/${guildId}/level/${userId}`),
   getLeaderboard: (guildId: string, limit = 25) =>
     call<{
@@ -525,6 +528,22 @@ export const api = {
     ),
   resetXp: (guildId: string, userId: string) =>
     call<void>(`/guilds/${guildId}/level/${userId}`, { method: 'DELETE' }),
+
+  // Prestige
+  getPrestigeInfo: (guildId: string, userId: string) =>
+    call<PrestigeInfo>(`/guilds/${guildId}/leveling/${userId}/prestige-info`),
+  prestigeMember: (guildId: string, userId: string) =>
+    call<{
+      guildId: string;
+      userId: string;
+      prestige: number;
+      previousPrestige: number;
+      xp: number;
+      level: number;
+      prestigedAt: string;
+      grantedRoleId: string | null;
+      totalXpMultiplier: number;
+    }>(`/guilds/${guildId}/leveling/${userId}/prestige`, { method: 'POST' }),
 
   // Economy
   getEconomyConfig: (guildId: string) => call<EconomyConfig>(`/guilds/${guildId}/economy-config`),
