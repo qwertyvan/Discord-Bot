@@ -110,6 +110,10 @@ export function registerInteractionCreate(client: Client): void {
           await handleApplyRejectModal(interaction);
           return;
         }
+        if (interaction.customId.startsWith('ka:add-modal:')) {
+          await handleKaraokeAddModal(interaction);
+          return;
+        }
       }
 
       if (interaction.isButton()) {
@@ -163,6 +167,14 @@ export function registerInteractionCreate(client: Client): void {
           interaction.customId.startsWith('bj:stand:')
         ) {
           await handleBlackjackButton(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('ka:rsvp:')) {
+          await handleKaraokeRsvp(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('ka:add:')) {
+          await handleKaraokeAddButton(interaction);
           return;
         }
       }
@@ -969,4 +981,86 @@ async function handleHelpCategorySelect(interaction: StringSelectMenuInteraction
     embeds: [buildCategoryEmbed(group)],
     components: [buildCategorySelect(group)],
   });
+}
+
+async function handleKaraokeRsvp(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  // ka:rsvp:<nightId>:<status>
+  const [, , nightId, status] = interaction.customId.split(':');
+  if (!nightId || !status || !['yes', 'maybe', 'no'].includes(status)) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const updated = await api.rsvpKaraoke(interaction.guildId, nightId, {
+      userId: interaction.user.id,
+      status: status as 'yes' | 'maybe' | 'no',
+    });
+    const { karaokeMessagePayload } = await import('../util/karaoke-render.js');
+    const counts = updated.rsvpCounts ?? { yes: 0, maybe: 0, no: 0 };
+    if (interaction.message) {
+      await interaction.message
+        .edit(karaokeMessagePayload(updated, updated.songs ?? [], counts))
+        .catch(() => undefined);
+    }
+    const label =
+      status === 'yes' ? '✅ Going' : status === 'maybe' ? '🤔 Maybe' : '❌ Not going';
+    await interaction.editReply(`${label} for **${updated.title}**.`);
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to RSVP.';
+    await interaction.editReply(msg);
+  }
+}
+
+async function handleKaraokeAddButton(interaction: ButtonInteraction): Promise<void> {
+  // ka:add:<nightId>
+  const nightId = interaction.customId.slice('ka:add:'.length);
+  if (!nightId) return;
+  const modal = new ModalBuilder()
+    .setCustomId(`ka:add-modal:${nightId}`)
+    .setTitle('Submit a karaoke song');
+  const titleInput = new TextInputBuilder()
+    .setCustomId('title')
+    .setLabel('Song title (artist — title)')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(200);
+  const urlInput = new TextInputBuilder()
+    .setCustomId('url')
+    .setLabel('Link (YouTube / Spotify — optional)')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(2048);
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(titleInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(urlInput),
+  );
+  await interaction.showModal(modal);
+}
+
+async function handleKaraokeAddModal(interaction: ModalSubmitInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const nightId = interaction.customId.slice('ka:add-modal:'.length);
+  if (!nightId) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const title = interaction.fields.getTextInputValue('title').trim();
+    const url = interaction.fields.getTextInputValue('url').trim();
+    const song = await api.addKaraokeSong(interaction.guildId, nightId, {
+      submitterId: interaction.user.id,
+      title,
+      ...(url ? { url } : {}),
+    });
+    // Refresh the announcement embed if the message is still around.
+    const refreshed = await api.getKaraokeNight(interaction.guildId, nightId);
+    const counts = refreshed.rsvpCounts ?? { yes: 0, maybe: 0, no: 0 };
+    if (interaction.message) {
+      const { karaokeMessagePayload } = await import('../util/karaoke-render.js');
+      await interaction.message
+        .edit(karaokeMessagePayload(refreshed, refreshed.songs ?? [], counts))
+        .catch(() => undefined);
+    }
+    await interaction.editReply(`🎵 Added **${title}** to the queue (\`${song.id}\`).`);
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to add song.';
+    await interaction.editReply(msg);
+  }
 }

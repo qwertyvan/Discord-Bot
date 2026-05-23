@@ -207,6 +207,14 @@ import type {
   LootDrop,
   UpsertLootDropInput,
   LootClaimResult,
+  KaraokeNight,
+  CreateKaraokeNightInput,
+  UpdateKaraokeNightInput,
+  KaraokeNightStatus,
+  KaraokeSong,
+  CreateKaraokeSongInput,
+  UpdateKaraokeSongInput,
+  UpsertKaraokeRsvpInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1587,4 +1595,57 @@ export const api = {
       method: 'POST',
       body: { userId },
     }),
+
+  // ─── Karaoke nights ────────────────────────────────────────────────────
+  listKaraokeNights: (
+    guildId: string,
+    query?: { status?: KaraokeNightStatus; limit?: number },
+  ) =>
+    call<{ nights: KaraokeNight[] }>(`/guilds/${guildId}/karaoke-nights`, {
+      query: {
+        ...(query?.status ? { status: query.status } : {}),
+        ...(query?.limit !== undefined ? { limit: query.limit } : {}),
+      },
+    }),
+  getKaraokeNight: (guildId: string, id: string) =>
+    call<KaraokeNight>(`/guilds/${guildId}/karaoke-nights/${id}`),
+  createKaraokeNight: (guildId: string, body: CreateKaraokeNightInput) =>
+    call<KaraokeNight>(`/guilds/${guildId}/karaoke-nights`, { method: 'POST', body }),
+  updateKaraokeNight: (guildId: string, id: string, body: UpdateKaraokeNightInput) =>
+    call<KaraokeNight>(`/guilds/${guildId}/karaoke-nights/${id}`, {
+      method: 'PATCH',
+      body,
+    }),
+  cancelKaraokeNight: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/karaoke-nights/${id}`, { method: 'DELETE' }),
+  addKaraokeSong: (guildId: string, id: string, body: CreateKaraokeSongInput) =>
+    call<KaraokeSong>(`/guilds/${guildId}/karaoke-nights/${id}/songs`, {
+      method: 'POST',
+      body,
+    }),
+  updateKaraokeSong: (
+    guildId: string,
+    id: string,
+    songId: string,
+    body: UpdateKaraokeSongInput,
+  ) =>
+    call<KaraokeSong>(`/guilds/${guildId}/karaoke-nights/${id}/songs/${songId}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteKaraokeSong: (guildId: string, id: string, songId: string) =>
+    call<void>(`/guilds/${guildId}/karaoke-nights/${id}/songs/${songId}`, {
+      method: 'DELETE',
+    }),
+  rsvpKaraoke: (guildId: string, id: string, body: UpsertKaraokeRsvpInput) =>
+    call<KaraokeNight>(`/guilds/${guildId}/karaoke-nights/${id}/rsvp`, {
+      method: 'POST',
+      body,
+    }),
+  dueKaraokeNights: () =>
+    call<{
+      t15: KaraokeNight[];
+      starting: KaraokeNight[];
+      endingLive: KaraokeNight[];
+    }>(`/karaoke-nights/due`),
 };
