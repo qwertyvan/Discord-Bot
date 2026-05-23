@@ -32,6 +32,7 @@ import { applicationMessagePayload } from '../util/application-render.js';
 import { renderBlackjack } from '../commands/economy/blackjack.js';
 import { buildCategoryEmbed, buildCategorySelect } from '../commands/utility/help.js';
 import { buildResultEmbed } from '../util/fishing-render.js';
+import { duelMessagePayload } from '../util/duel-engine.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -197,6 +198,17 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('fish:reel:')) {
           await handleFishReel(interaction);
+          return;
+        }
+        if (
+          interaction.customId.startsWith('du:accept:') ||
+          interaction.customId.startsWith('du:decline:')
+        ) {
+          await handleDuelRespond(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('du:move:')) {
+          await handleDuelMove(interaction);
           return;
         }
       }
@@ -1289,5 +1301,96 @@ async function handleAuctionBidModal(
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Bid failed.';
     await interaction.editReply(msg);
+  }
+}
+
+// du:accept:<id> or du:decline:<id> — pending → active/cancelled. Only the
+// challenged opponent may accept; either participant may decline.
+async function handleDuelRespond(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const [, action, matchId] = interaction.customId.split(':');
+  if (!matchId || (action !== 'accept' && action !== 'decline')) return;
+
+  try {
+    const updated = await api.respondDuel(interaction.guildId, matchId, {
+      userId: interaction.user.id,
+      action,
+    });
+    const [challengerPet, opponentPet] = await Promise.all([
+      api.getBattlePet(interaction.guildId, updated.challengerId),
+      api.getBattlePet(interaction.guildId, updated.opponentId),
+    ]);
+    const payload = duelMessagePayload(updated, challengerPet, opponentPet);
+    await interaction.update({
+      content:
+        updated.status === 'active'
+          ? `⚔️ Duel accepted — <@${updated.currentActorId}> moves first.`
+          : '🛑 Duel declined.',
+      embeds: payload.embeds,
+      components: payload.components,
+      allowedMentions: { users: [updated.challengerId, updated.opponentId] },
+    });
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Could not respond.';
+    await interaction
+      .reply({ content: msg, flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+  }
+}
+
+// du:move:<id>:<attack|defend|special> — submits the actor's move for the
+// current turn. The server validates whose turn it is.
+async function handleDuelMove(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const [, , matchId, moveRaw] = interaction.customId.split(':');
+  if (!matchId || !moveRaw) return;
+  if (moveRaw !== 'attack' && moveRaw !== 'defend' && moveRaw !== 'special') return;
+
+  try {
+    const result = await api.duelMove(interaction.guildId, matchId, {
+      userId: interaction.user.id,
+      move: moveRaw,
+    });
+    const [challengerPet, opponentPet] = await Promise.all([
+      api.getBattlePet(interaction.guildId, result.match.challengerId),
+      api.getBattlePet(interaction.guildId, result.match.opponentId),
+    ]);
+    const payload = duelMessagePayload(result.match, challengerPet, opponentPet);
+
+    let content: string;
+    if (result.ended) {
+      if (result.winnerId) {
+        content =
+          `🏆 <@${result.winnerId}> wins! ` +
+          `(${result.challengerEloDelta >= 0 ? '+' : ''}${result.challengerEloDelta} / ` +
+          `${result.opponentEloDelta >= 0 ? '+' : ''}${result.opponentEloDelta} ELO` +
+          (result.rewardCurrency > 0 ? ` · +${result.rewardCurrency} 🪙` : '') +
+          ')';
+      } else {
+        content = '🤝 Mutual KO — draw.';
+      }
+    } else {
+      content = `⚔️ <@${result.match.currentActorId}> — your move.`;
+    }
+
+    await interaction.update({
+      content,
+      embeds: payload.embeds,
+      components: payload.components,
+      allowedMentions: {
+        users: result.ended
+          ? result.winnerId
+            ? [result.winnerId]
+            : []
+          : result.match.currentActorId
+            ? [result.match.currentActorId]
+            : [],
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Move failed.';
+    await interaction
+      .reply({ content: msg, flags: MessageFlags.Ephemeral })
+      .catch(() => {});
   }
 }

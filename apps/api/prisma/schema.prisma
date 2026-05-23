@@ -111,6 +111,8 @@ model Guild {
   onboardingForms       OnboardingForm[]
   applications          Application[]
   karaokeNights         KaraokeNight[]
+  battlePets            BattlePet[]
+  duelMatches           DuelMatch[]
   auctions              Auction[]
   marketConfig          MarketConfig?
   marketListings        MarketListing[]
@@ -2393,4 +2395,59 @@ model FishingCast {
 
   @@index([guildId, userId, resolved])
   @@index([resolvesAt])
+}
+
+// ─── Duels & pet battles (v0.59.0) ────────────────────────────────────
+
+// Per-(guild, user) battle pet — the "champion" piloted in PvP duels. Stats
+// scale with `level`; `allocPoints` is awarded on level-up and spent via
+// /duel pet allocate. Pet ownership is per-user and separate from the
+// per-server companion pet (ServerPet, v0.52); a battle pet never permanently
+// dies, it just loses the duel and may bank XP/ELO deltas.
+model BattlePet {
+  guildId     String
+  userId      String
+  name        String   @default("Champion") @db.VarChar(48)
+  species     String   @default("slime") @db.VarChar(32)
+  level       Int      @default(1)
+  xp          Int      @default(0)
+  hp          Int      @default(20)
+  maxHp       Int      @default(20)
+  atk         Int      @default(5)
+  def         Int      @default(3)
+  spd         Int      @default(4)
+  allocPoints Int      @default(0)
+  wins        Int      @default(0)
+  losses      Int      @default(0)
+  draws       Int      @default(0)
+  elo         Int      @default(1000)
+  createdAt   DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+  @@index([guildId, elo(sort: Desc)])
+}
+
+// One PvP duel between two BattlePets. The `log` is an append-only JSON array
+// of per-turn entries ({ turn, actorId, move, damage, ... }) so the dashboard
+// (and the next move endpoint) can render the play-by-play. `currentActorId`
+// tracks whose turn it is in the sequential turn model.
+model DuelMatch {
+  id             String    @id @default(uuid())
+  guildId        String
+  challengerId   String
+  opponentId     String
+  // 'pending' | 'active' | 'ended' | 'cancelled'
+  status         String    @default("pending") @db.VarChar(16)
+  turn           Int       @default(0)
+  currentActorId String?
+  log            Json      @default("[]")
+  winnerId       String?
+  createdAt      DateTime  @default(now())
+  endedAt        DateTime?
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status])
 }
