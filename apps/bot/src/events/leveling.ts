@@ -9,6 +9,10 @@ import {
 } from 'discord.js';
 import { api, ApiError } from '../api-client.js';
 import { log } from '../logger.js';
+import {
+  bumpLocalActivity,
+  evaluateOnEventBackground,
+} from '../util/achievement-eval.js';
 
 interface VoiceSession {
   joinedAt: number;
@@ -98,6 +102,14 @@ export function registerLevelingEvents(client: Client): void {
       await applyRoleRewards(member, result.previousLevel, result.level, cfg.roleRewards);
     }
     await announceLevelUp(message.guild, member, result.level, message.channelId);
+    evaluateOnEventBackground(
+      message.client,
+      'level',
+      message.guildId,
+      message.author.id,
+      result.level,
+      message.channelId,
+    );
   });
 
   client.on(Events.VoiceStateUpdate, async (oldState: VoiceState, newState: VoiceState) => {
@@ -119,6 +131,9 @@ export function registerLevelingEvents(client: Client): void {
       if (!session) return;
       const minutes = Math.floor((Date.now() - session.joinedAt) / 60_000);
       if (minutes < 1) return;
+      // Reflect the minutes locally so the achievement evaluator can include
+      // them before the next activity flush.
+      bumpLocalActivity(guildId, userId, { voiceMinutes: minutes });
       try {
         const result = await api.awardVoiceXp(guildId, { userId, minutes });
         if (result.leveledUp) {
@@ -130,10 +145,27 @@ export function registerLevelingEvents(client: Client): void {
             }
             await announceLevelUp(newState.guild, member, result.level, session.channelId);
           }
+          evaluateOnEventBackground(
+            newState.client,
+            'level',
+            guildId,
+            userId,
+            result.level,
+            session.channelId,
+          );
         }
       } catch (err) {
         log.warn('awardVoiceXp failed', { guildId, err: String(err) });
       }
+      // Voice-minute threshold check (independent of level-up).
+      evaluateOnEventBackground(
+        newState.client,
+        'voice_minutes',
+        guildId,
+        userId,
+        undefined,
+        session.channelId,
+      );
     }
   });
 }

@@ -21,6 +21,7 @@ import { registerThreadCreate } from './events/threadCreate.js';
 import { registerGuildMemberAdd } from './events/guildMemberAdd.js';
 import { registerInviteTracking } from './events/inviteTracking.js';
 import { registerGuildMemberUpdate } from './events/guildMemberUpdate.js';
+import { registerAchievementEvents } from './events/achievements.js';
 import { startScheduler } from './scheduler.js';
 import { scanPluginsDir } from './plugins/index.js';
 import { log } from './logger.js';
@@ -73,6 +74,7 @@ export function createClient(): Client {
   registerGuildMemberAdd(client);
   registerInviteTracking(client);
   registerGuildMemberUpdate(client);
+  registerAchievementEvents(client);
   startScheduler(client);
 
   // Load plugins after the gateway is ready. Doing this in `once(ready)`

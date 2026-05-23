@@ -77,6 +77,7 @@ import { onboardingFormsRoutes } from './routes/onboarding-forms.js';
 import { karaokeRoutes } from './routes/karaoke.js';
 import { serverPetRoutes } from './routes/server-pet.js';
 import { profileRoutes } from './routes/profile.js';
+import { achievementsRoutes } from './routes/achievements.js';
 import { authRoutes } from './routes/auth.js';
 import { adminGuildsRoutes } from './routes/admin/guilds.js';
 import { adminReactionRolesRoutes } from './routes/admin/reaction-roles.js';
@@ -181,6 +182,7 @@ export async function buildApp() {
   await app.register(karaokeRoutes);
   await app.register(serverPetRoutes);
   await app.register(profileRoutes);
+  await app.register(achievementsRoutes);
   await app.register(authRoutes);
   await app.register(adminGuildsRoutes);
   await app.register(adminReactionRolesRoutes);
