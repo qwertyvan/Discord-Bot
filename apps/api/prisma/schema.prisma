@@ -1483,6 +1483,15 @@ model LevelConfig {
   noXpRoleIds         Json     @default("[]")
   // When true, /rank attaches a rendered PNG card instead of an embed.
   rankCardEnabled     Boolean  @default(false)
+  // Prestige system — members at maxLevel can opt to reset XP for a permanent
+  // cosmetic tier + small XP multiplier per tier.
+  prestigeEnabled      Boolean @default(false)
+  // Level threshold a member must reach before prestiging. Capped sanity at 1000.
+  maxLevel             Int     @default(100)
+  // Per-prestige XP multiplier bonus. 0.05 = +5% per prestige tier.
+  prestigeMultiplier   Float   @default(0.05)
+  // JSON: [{ "prestige": N, "roleId": "..." }] — role granted on reaching prestige N.
+  prestigeRoleRewards  Json    @default("[]")
   updatedAt           DateTime @updatedAt
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
@@ -1494,6 +1503,10 @@ model MemberLevel {
   xp           Int       @default(0)
   lastTextXpAt DateTime?
   voiceMinutes Int       @default(0)
+  // Number of times the user has prestiged. 0 = no prestige yet.
+  prestige     Int       @default(0)
+  // Timestamp of the most recent prestige; null until first prestige.
+  prestigedAt  DateTime?
   updatedAt    DateTime  @default(now()) @updatedAt
 
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)

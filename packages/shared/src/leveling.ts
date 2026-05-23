@@ -8,6 +8,14 @@ export const LevelRoleRewardSchema = z.object({
 
 export type LevelRoleReward = z.infer<typeof LevelRoleRewardSchema>;
 
+/** Prestige tier → role grant. Up to 10 prestige tiers. */
+export const PrestigeRoleRewardSchema = z.object({
+  prestige: z.number().int().min(1).max(10),
+  roleId: SnowflakeSchema,
+});
+
+export type PrestigeRoleReward = z.infer<typeof PrestigeRoleRewardSchema>;
+
 export const LevelConfigSchema = z.object({
   guildId: SnowflakeSchema,
   enabled: z.boolean(),
@@ -21,6 +29,10 @@ export const LevelConfigSchema = z.object({
   roleRewards: z.array(LevelRoleRewardSchema),
   noXpRoleIds: z.array(SnowflakeSchema),
   rankCardEnabled: z.boolean(),
+  prestigeEnabled: z.boolean(),
+  maxLevel: z.number().int().min(1).max(1000),
+  prestigeMultiplier: z.number().min(0).max(10),
+  prestigeRoleRewards: z.array(PrestigeRoleRewardSchema),
 });
 
 export type LevelConfig = z.infer<typeof LevelConfigSchema>;
@@ -37,9 +49,32 @@ export const MemberLevelSchema = z.object({
   rank: z.number().int().positive().nullable(),
   nextLevelXp: z.number().int().nonnegative(),
   currentLevelXp: z.number().int().nonnegative(),
+  prestige: z.number().int().min(0).max(10),
+  prestigedAt: z.string().datetime().nullable(),
 });
 
 export type MemberLevel = z.infer<typeof MemberLevelSchema>;
+
+/** Returned by GET /guilds/:gid/leveling/:uid/prestige-info. */
+export const PrestigeInfoSchema = z.object({
+  guildId: SnowflakeSchema,
+  userId: SnowflakeSchema,
+  prestige: z.number().int().min(0).max(10),
+  prestigeEnabled: z.boolean(),
+  maxLevel: z.number().int().min(1).max(1000),
+  prestigeMultiplier: z.number().min(0).max(10),
+  /** Total multiplier the user currently enjoys: 1 + prestige * prestigeMultiplier. */
+  totalXpMultiplier: z.number().min(1).max(100),
+  level: z.number().int().nonnegative(),
+  xp: z.number().int().nonnegative(),
+  canPrestigeNow: z.boolean(),
+  /** Role rewarded on the next prestige tier, if configured. */
+  nextTierRoleId: SnowflakeSchema.nullable(),
+  /** Role rewarded on the current prestige tier, if configured. */
+  currentTierRoleId: SnowflakeSchema.nullable(),
+});
+
+export type PrestigeInfo = z.infer<typeof PrestigeInfoSchema>;
 
 /**
  * Triangular curve: total XP required to be ≥ level L is 50 * L * (L + 1).

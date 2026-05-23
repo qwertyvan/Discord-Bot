@@ -25,6 +25,10 @@ interface SerializableConfig {
   roleRewards: unknown;
   noXpRoleIds: unknown;
   rankCardEnabled?: boolean;
+  prestigeEnabled?: boolean;
+  maxLevel?: number;
+  prestigeMultiplier?: number;
+  prestigeRoleRewards?: unknown;
 }
 
 function serializeConfig(guildId: string, cfg: SerializableConfig | null) {
@@ -41,6 +45,11 @@ function serializeConfig(guildId: string, cfg: SerializableConfig | null) {
     roleRewards: (cfg?.roleRewards as Array<{ level: number; roleId: string }>) ?? [],
     noXpRoleIds: (cfg?.noXpRoleIds as string[]) ?? [],
     rankCardEnabled: cfg?.rankCardEnabled ?? false,
+    prestigeEnabled: cfg?.prestigeEnabled ?? false,
+    maxLevel: cfg?.maxLevel ?? 100,
+    prestigeMultiplier: cfg?.prestigeMultiplier ?? 0.05,
+    prestigeRoleRewards:
+      (cfg?.prestigeRoleRewards as Array<{ prestige: number; roleId: string }>) ?? [],
   };
 }
 
@@ -79,6 +88,10 @@ export const levelingRoutes: FastifyPluginAsyncZod = async (app) => {
         'roleRewards',
         'noXpRoleIds',
         'rankCardEnabled',
+        'prestigeEnabled',
+        'maxLevel',
+        'prestigeMultiplier',
+        'prestigeRoleRewards',
       ] as const) {
         const v = (patch as Record<string, unknown>)[k];
         if (v !== undefined) update[k] = v;
@@ -100,6 +113,10 @@ export const levelingRoutes: FastifyPluginAsyncZod = async (app) => {
           roleRewards: (patch.roleRewards ?? []) as Prisma.InputJsonValue,
           noXpRoleIds: (patch.noXpRoleIds ?? []) as Prisma.InputJsonValue,
           rankCardEnabled: patch.rankCardEnabled ?? false,
+          prestigeEnabled: patch.prestigeEnabled ?? false,
+          maxLevel: patch.maxLevel ?? 100,
+          prestigeMultiplier: patch.prestigeMultiplier ?? 0.05,
+          prestigeRoleRewards: (patch.prestigeRoleRewards ?? []) as Prisma.InputJsonValue,
         },
       });
       return serializeConfig(guildId, cfg);
@@ -161,6 +178,8 @@ export const levelingRoutes: FastifyPluginAsyncZod = async (app) => {
         rank: member ? higher + 1 : null,
         currentLevelXp: xpForLevel(lvl),
         nextLevelXp: xpForLevel(lvl + 1),
+        prestige: member?.prestige ?? 0,
+        prestigedAt: member?.prestigedAt ? member.prestigedAt.toISOString() : null,
       };
     },
   );
@@ -229,6 +248,106 @@ export const levelingRoutes: FastifyPluginAsyncZod = async (app) => {
       const { guildId, userId } = req.params;
       await app.prisma.memberLevel.deleteMany({ where: { guildId, userId } });
       return reply.code(204).send();
+    },
+  );
+
+  // ─── Prestige ─────────────────────────────────────────────────────
+  app.get(
+    '/guilds/:guildId/leveling/:userId/prestige-info',
+    { preHandler: app.requireBot(), schema: { params: UserParams } },
+    async (req) => {
+      const { guildId, userId } = req.params;
+      const cfg = await app.prisma.levelConfig.findUnique({ where: { guildId } });
+      const member = await app.prisma.memberLevel.findUnique({
+        where: { guildId_userId: { guildId, userId } },
+      });
+      const prestigeEnabled = cfg?.prestigeEnabled ?? false;
+      const maxLevel = cfg?.maxLevel ?? 100;
+      const prestigeMultiplier = cfg?.prestigeMultiplier ?? 0.05;
+      const rewards =
+        (cfg?.prestigeRoleRewards as Array<{ prestige: number; roleId: string }>) ?? [];
+      const prestige = member?.prestige ?? 0;
+      const xp = member?.xp ?? 0;
+      const lvl = levelFromXp(xp);
+      const canPrestigeNow = prestigeEnabled && lvl >= maxLevel && prestige < 10;
+      const nextTierRoleId = rewards.find((r) => r.prestige === prestige + 1)?.roleId ?? null;
+      const currentTierRoleId =
+        prestige > 0 ? (rewards.find((r) => r.prestige === prestige)?.roleId ?? null) : null;
+      return {
+        guildId,
+        userId,
+        prestige,
+        prestigeEnabled,
+        maxLevel,
+        prestigeMultiplier,
+        totalXpMultiplier: 1 + prestige * prestigeMultiplier,
+        level: lvl,
+        xp,
+        canPrestigeNow,
+        nextTierRoleId,
+        currentTierRoleId,
+      };
+    },
+  );
+
+  app.post(
+    '/guilds/:guildId/leveling/:userId/prestige',
+    { preHandler: app.requireBot(), schema: { params: UserParams } },
+    async (req) => {
+      const { guildId, userId } = req.params;
+      const cfg = await app.prisma.levelConfig.findUnique({ where: { guildId } });
+      if (!cfg?.prestigeEnabled) {
+        throw HttpError.badRequest('Prestige is not enabled in this server.');
+      }
+      const maxLevel = cfg.maxLevel;
+      const member = await app.prisma.memberLevel.findUnique({
+        where: { guildId_userId: { guildId, userId } },
+      });
+      const xp = member?.xp ?? 0;
+      const lvl = levelFromXp(xp);
+      if (lvl < maxLevel) {
+        throw HttpError.badRequest(
+          `You must reach level ${maxLevel} before prestiging (currently level ${lvl}).`,
+        );
+      }
+      const currentPrestige = member?.prestige ?? 0;
+      if (currentPrestige >= 10) {
+        throw HttpError.badRequest('Maximum prestige (P10) already reached.');
+      }
+      const newPrestige = currentPrestige + 1;
+      const now = new Date();
+      const updated = await app.prisma.memberLevel.upsert({
+        where: { guildId_userId: { guildId, userId } },
+        update: {
+          xp: 0,
+          voiceMinutes: 0,
+          lastTextXpAt: null,
+          prestige: newPrestige,
+          prestigedAt: now,
+        },
+        create: {
+          guildId,
+          userId,
+          xp: 0,
+          voiceMinutes: 0,
+          prestige: newPrestige,
+          prestigedAt: now,
+        },
+      });
+      const rewards =
+        (cfg.prestigeRoleRewards as Array<{ prestige: number; roleId: string }>) ?? [];
+      const grantedRoleId = rewards.find((r) => r.prestige === newPrestige)?.roleId ?? null;
+      return {
+        guildId,
+        userId,
+        prestige: updated.prestige,
+        previousPrestige: currentPrestige,
+        xp: updated.xp,
+        level: 0,
+        prestigedAt: updated.prestigedAt ? updated.prestigedAt.toISOString() : now.toISOString(),
+        grantedRoleId,
+        totalXpMultiplier: 1 + updated.prestige * cfg.prestigeMultiplier,
+      };
     },
   );
 };

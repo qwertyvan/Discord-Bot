@@ -40,7 +40,10 @@ export async function awardTextXp(
 
   const multipliers = (cfg.channelMultipliers as Record<string, number>) ?? {};
   const multiplier = multipliers[channelId] ?? 1;
-  const amount = Math.max(0, Math.round(cfg.perMessageXp * multiplier));
+  const prestigeBonus = cfg.prestigeEnabled
+    ? 1 + (existing?.prestige ?? 0) * cfg.prestigeMultiplier
+    : 1;
+  const amount = Math.max(0, Math.round(cfg.perMessageXp * multiplier * prestigeBonus));
   if (amount === 0) {
     const lvl = levelFromXp(existing?.xp ?? 0);
     return { applied: false, xp: existing?.xp ?? 0, level: lvl, previousLevel: lvl, leveledUp: false };
@@ -78,10 +81,13 @@ export async function addVoiceXp(
     return { applied: false, xp: 0, level: lvl, previousLevel: lvl, leveledUp: false };
   }
 
-  const amount = cfg.voiceXpPerMinute * minutes;
   const existing = await prisma.memberLevel.findUnique({
     where: { guildId_userId: { guildId, userId } },
   });
+  const prestigeBonus = cfg.prestigeEnabled
+    ? 1 + (existing?.prestige ?? 0) * cfg.prestigeMultiplier
+    : 1;
+  const amount = Math.max(0, Math.round(cfg.voiceXpPerMinute * minutes * prestigeBonus));
   const previousXp = existing?.xp ?? 0;
   const previousLevel = levelFromXp(previousXp);
   const newXp = previousXp + amount;
