@@ -108,6 +108,8 @@ model Guild {
   onboardingForms       OnboardingForm[]
   applications          Application[]
   karaokeNights         KaraokeNight[]
+  serverPet             ServerPet?
+  petInteractions       PetInteraction[]
 }
 
 // Per-guild karaoke night — a host schedules it against a voice channel, the
@@ -2047,4 +2049,37 @@ model Application {
   form  OnboardingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
 
   @@index([guildId, status, createdAt])
+}
+
+// Per-guild Tamagotchi-style pet. Stats decay over time (see scheduler); the
+// pet earns XP from member interactions which drives evolution through the
+// stages defined in the bot's pet-state util.
+model ServerPet {
+  guildId       String   @id
+  name          String   @default("Pixel") @db.VarChar(48)
+  stage         String   @default("egg") @db.VarChar(16)
+  xp            Int      @default(0)
+  hunger        Int      @default(80)
+  happiness     Int      @default(80)
+  energy        Int      @default(80)
+  lastUpdatedAt DateTime @updatedAt @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+// Audit ledger of every interaction with the server pet. Powers per-user
+// cooldowns (feed: 30s, play: 5m, pet: 24h) and the 24h top-feeder board.
+model PetInteraction {
+  id            String   @id @default(uuid())
+  guildId       String
+  userId        String
+  kind          String   @db.VarChar(16) // feed | play | pet
+  xpAwarded     Int
+  currencySpent Int      @default(0)
+  at            DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, userId, at])
+  @@index([guildId, at])
 }

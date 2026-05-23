@@ -44,6 +44,7 @@ const ACTIVITY_ROLES_TICK_MS = 24 * 60 * 60_000;
 const BACKUP_TICK_MS = 24 * 60 * 60_000;
 const APPEAL_SLA_TICK_MS = 60 * 60_000; // hourly
 const MILESTONES_TICK_MS = 24 * 60 * 60_000; // daily
+const PET_DECAY_TICK_MS = 60 * 60_000; // hourly
 
 const HEARTBEAT_TICK_MS = 30_000;
 
@@ -92,6 +93,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('anti-raid', () => sweepAntiRaid(client))().catch(noop), ANTI_RAID_TICK_MS);
   setInterval(() => tick('milestones', () => sweepMemberMilestones(client))().catch(noop), MILESTONES_TICK_MS);
   setInterval(() => tick('karaoke', () => pollDueKaraokeNights(client))().catch(noop), KARAOKE_TICK_MS);
+  setInterval(() => tick('pet-decay', () => decayServerPets())().catch(noop), PET_DECAY_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -117,7 +119,16 @@ export function startScheduler(client: Client): void {
     tick('anti-raid', () => sweepAntiRaid(client))().catch(noop);
     tick('milestones', () => sweepMemberMilestones(client))().catch(noop);
     tick('karaoke', () => pollDueKaraokeNights(client))().catch(noop);
+    tick('pet-decay', () => decayServerPets())().catch(noop);
   }, 5_000);
+}
+
+async function decayServerPets(): Promise<void> {
+  try {
+    await api.tickServerPetDecay();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('tickServerPetDecay API error', { status: err.status });
+  }
 }
 
 const ANTI_RAID_TICK_MS = 60_000;
