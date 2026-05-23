@@ -247,6 +247,11 @@ import type {
   AuctionStatus,
   CreateAuctionInput,
   PlaceBidInput,
+  FishingSkill,
+  FishingDrop,
+  CreateFishingDropInput,
+  FishingCast,
+  CastResult,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1894,5 +1899,35 @@ export const api = {
   settleAuction: (guildId: string, auctionId: string) =>
     call<Auction>(`/guilds/${guildId}/auctions/${auctionId}/settle`, {
       method: 'POST',
+    }),
+
+  // Fishing (v0.58)
+  getFishingSkill: (guildId: string, userId: string) =>
+    call<FishingSkill>(`/guilds/${guildId}/fishing/skill/${userId}`),
+  listFishingDrops: (guildId: string) =>
+    call<{ drops: FishingDrop[] }>(`/guilds/${guildId}/fishing/drops`),
+  createFishingDrop: (guildId: string, body: CreateFishingDropInput) =>
+    call<FishingDrop>(`/guilds/${guildId}/fishing/drops`, { method: 'POST', body }),
+  deleteFishingDrop: (guildId: string, id: string) =>
+    call<void>(`/guilds/${guildId}/fishing/drops/${id}`, { method: 'DELETE' }),
+  seedFishingDrops: (guildId: string) =>
+    call<{ inserted: number; total: number; drops: FishingDrop[] }>(
+      `/guilds/${guildId}/fishing/drops/seed`,
+      { method: 'POST' },
+    ),
+  castFishingLine: (guildId: string, userId: string) =>
+    call<FishingCast>(`/guilds/${guildId}/fishing/cast`, {
+      method: 'POST',
+      body: { userId },
+    }),
+  resolveFishingCast: (guildId: string, castId: string) =>
+    call<CastResult>(`/guilds/${guildId}/fishing/resolve`, {
+      method: 'POST',
+      body: { castId },
+    }),
+  resolveDueFishingCasts: (limit?: number) =>
+    call<{ resolved: number }>(`/fishing/resolve-due`, {
+      method: 'POST',
+      body: limit !== undefined ? { limit } : undefined,
     }),
 };

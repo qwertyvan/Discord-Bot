@@ -50,6 +50,10 @@ const MILESTONES_TICK_MS = 24 * 60 * 60_000; // daily
 const PET_DECAY_TICK_MS = 60 * 60_000; // hourly
 const QUESTS_TICK_MS = 60 * 60_000; // hourly
 const MARKETPLACE_TICK_MS = 60 * 60_000; // hourly
+// Auto-resolve abandoned fishing casts every minute so the table doesn't
+// accumulate unresolved rows for users who dismissed the ephemeral reply
+// before the 30s timer elapsed.
+const FISHING_TICK_MS = 60_000;
 
 const HEARTBEAT_TICK_MS = 30_000;
 
@@ -103,6 +107,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('karaoke', () => pollDueKaraokeNights(client))().catch(noop), KARAOKE_TICK_MS);
   setInterval(() => tick('pet-decay', () => decayServerPets())().catch(noop), PET_DECAY_TICK_MS);
   setInterval(() => tick('marketplace', () => sweepExpiredListings())().catch(noop), MARKETPLACE_TICK_MS);
+  setInterval(() => tick('fishing', () => resolveDueFishingCasts())().catch(noop), FISHING_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -131,6 +136,7 @@ export function startScheduler(client: Client): void {
     tick('karaoke', () => pollDueKaraokeNights(client))().catch(noop);
     tick('pet-decay', () => decayServerPets())().catch(noop);
     tick('marketplace', () => sweepExpiredListings())().catch(noop);
+    tick('fishing', () => resolveDueFishingCasts())().catch(noop);
   }, 5_000);
 }
 
@@ -1559,6 +1565,20 @@ async function pollDueKaraokeNights(client: Client): Promise<void> {
         .catch(() => undefined);
     } catch (err) {
       log.warn('Karaoke recap failed', { id: night.id, err: String(err) });
+    }
+  }
+}
+
+// Auto-resolve abandoned fishing casts. The user-driven path (the "Reel in"
+// button) already does the rewarding; this tick exists for casts whose
+// player dismissed the ephemeral reply or otherwise never clicked the
+// button. The API bounds the per-tick batch internally.
+async function resolveDueFishingCasts(): Promise<void> {
+  try {
+    await api.resolveDueFishingCasts();
+  } catch (err) {
+    if (err instanceof ApiError && err.status !== 404) {
+      log.warn('resolveDueFishingCasts API error', { status: err.status });
     }
   }
 }

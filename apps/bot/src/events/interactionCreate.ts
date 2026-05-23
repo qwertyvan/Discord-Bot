@@ -31,6 +31,7 @@ import { auctionMessagePayload } from '../util/auction-render.js';
 import { applicationMessagePayload } from '../util/application-render.js';
 import { renderBlackjack } from '../commands/economy/blackjack.js';
 import { buildCategoryEmbed, buildCategorySelect } from '../commands/utility/help.js';
+import { buildResultEmbed } from '../util/fishing-render.js';
 
 export function registerInteractionCreate(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -192,6 +193,10 @@ export function registerInteractionCreate(client: Client): void {
         }
         if (interaction.customId.startsWith('auc:bid-custom:')) {
           await handleAuctionBidCustomButton(interaction);
+          return;
+        }
+        if (interaction.customId.startsWith('fish:reel:')) {
+          await handleFishReel(interaction);
           return;
         }
       }
@@ -1066,6 +1071,36 @@ async function handleMarketViewSelect(interaction: StringSelectMenuInteraction):
   } catch (err) {
     const msg = err instanceof ApiError ? err.message : 'Failed to load listing.';
     await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+  }
+}
+
+// Fishing "Reel in" button. customId format: `fish:reel:<castId>`. The
+// original /fish cast reply is ephemeral, so we edit it in place with the
+// result embed and strip the button to prevent double-resolves.
+async function handleFishReel(interaction: ButtonInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  const castId = interaction.customId.slice('fish:reel:'.length);
+  if (!castId) return;
+  try {
+    const result = await api.resolveFishingCast(interaction.guildId, castId);
+    let currencySymbol = '🪙';
+    try {
+      const cfg = await api.getEconomyConfig(interaction.guildId);
+      currencySymbol = cfg.currencySymbol ?? '🪙';
+    } catch {
+      // Economy not configured; default symbol is fine.
+    }
+    await interaction.update({
+      embeds: [buildResultEmbed(result, currencySymbol)],
+      components: [],
+    });
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to reel in.';
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral }).catch(() => {});
+    } else {
+      await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
   }
 }
 

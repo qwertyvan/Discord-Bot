@@ -103,6 +103,9 @@ model Guild {
   milestoneAwards       MilestoneAward[]
   lootDropsExt          LootDrop[]
   lootClaims            LootClaim[]
+  fishingSkills         FishingSkill[]
+  fishingDrops          FishingDrop[]
+  fishingCasts          FishingCast[]
   linkSafetyConfig      LinkSafetyConfig?
   linkDomains           LinkDomain[]
   onboardingForms       OnboardingForm[]
@@ -1399,6 +1402,7 @@ model ShopItem {
   lootDrops      LootDrop[]
   marketListings MarketListing[]
   auctions       Auction[]
+  fishingDrops   FishingDrop[]
 
   @@unique([guildId, slug])
   @@unique([guildId, name])
@@ -2108,6 +2112,21 @@ model UserProfile {
   favoriteQuote String?  @db.VarChar(200)
   updatedAt     DateTime @default(now()) @updatedAt
 
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+}
+
+// Per-(guild, user) fishing skill record. XP and level are advanced by the
+// /fish cast → resolve flow. `casts` is a lifetime counter for the user
+// (resolved + abandoned).
+model FishingSkill {
+  guildId String
+  userId  String
+  xp      Int    @default(0)
+  level   Int    @default(1)
+  casts   Int    @default(0)
+
   guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 
   @@id([guildId, userId])
@@ -2329,4 +2348,49 @@ model AuctionBid {
   auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 
   @@index([auctionId, placedAt])
+}
+
+// One row per possible drop in the guild's fishing table. The /fish resolve
+// flow picks a row via weighted random across rows whose minLevel ≤ player
+// level. Optional `itemId` links to a ShopItem so successful catches deposit
+// into the player's existing inventory.
+model FishingDrop {
+  id           String   @id @default(uuid())
+  guildId      String
+  slug         String   @db.VarChar(48)
+  itemId       String?
+  name         String   @db.VarChar(120)
+  emoji        String   @default("🐟") @db.VarChar(64)
+  minLevel     Int      @default(1)
+  weight       Int      @default(10)
+  currencyMin  Int      @default(0)
+  currencyMax  Int      @default(0)
+  xpReward     Int      @default(5)
+  enabled      Boolean  @default(true)
+
+  guild Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  item  ShopItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@unique([guildId, slug])
+  @@index([guildId, minLevel, enabled])
+}
+
+// An in-flight or resolved cast. `resolvesAt` is `startedAt + 30s`; the
+// /fish reel-in button (or the scheduler auto-resolve sweep) flips
+// `resolved=true` and writes the chosen drop + rewards.
+model FishingCast {
+  id              String   @id @default(uuid())
+  guildId         String
+  userId          String
+  startedAt       DateTime @default(now())
+  resolvesAt      DateTime
+  resolved        Boolean  @default(false)
+  dropId          String?
+  currencyEarned  Int      @default(0)
+  xpEarned        Int      @default(0)
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, userId, resolved])
+  @@index([resolvesAt])
 }
