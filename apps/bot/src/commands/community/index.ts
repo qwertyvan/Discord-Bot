@@ -8,6 +8,7 @@ import { saveQuoteContext } from './quote-context.js';
 import { milestone } from './milestone.js';
 import { apply } from './apply.js';
 import { form } from './form.js';
+import { karaoke } from './karaoke.js';
 
-export const communityCommands = [sticky, suggest, suggestReview, appeal, invites, autoReaction, quote, milestone, apply, form];
+export const communityCommands = [sticky, suggest, suggestReview, appeal, invites, autoReaction, quote, milestone, apply, form, karaoke];
 export const communityContextCommands = [saveQuoteContext];

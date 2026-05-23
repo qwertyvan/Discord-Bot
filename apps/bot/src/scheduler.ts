@@ -91,6 +91,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('stage-events', () => tickStageEvents(client))().catch(noop), STAGE_TICK_MS);
   setInterval(() => tick('anti-raid', () => sweepAntiRaid(client))().catch(noop), ANTI_RAID_TICK_MS);
   setInterval(() => tick('milestones', () => sweepMemberMilestones(client))().catch(noop), MILESTONES_TICK_MS);
+  setInterval(() => tick('karaoke', () => pollDueKaraokeNights(client))().catch(noop), KARAOKE_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -115,6 +116,7 @@ export function startScheduler(client: Client): void {
     tick('stage-events', () => tickStageEvents(client))().catch(noop);
     tick('anti-raid', () => sweepAntiRaid(client))().catch(noop);
     tick('milestones', () => sweepMemberMilestones(client))().catch(noop);
+    tick('karaoke', () => pollDueKaraokeNights(client))().catch(noop);
   }, 5_000);
 }
 
@@ -122,6 +124,7 @@ const ANTI_RAID_TICK_MS = 60_000;
 
 const STALE_THREAD_TICK_MS = 60 * 60_000;
 const STAGE_TICK_MS = 60_000;
+const KARAOKE_TICK_MS = 60_000;
 
 // Discord rate-limits channel renames at 2 per 10 minutes — anything more
 // frequent than 5 minutes per channel risks hitting the 429 cap.
@@ -1361,5 +1364,123 @@ async function sweepAntiRaid(client: Client): Promise<void> {
       log.warn('anti-raid: expiry DM failed', { userId: p.userId, err: String(err) });
     }
     await api.deletePendingVerification(p.guildId, p.userId).catch(() => {});
+  }
+}
+
+/**
+ * Drives karaoke night state transitions. The API's /karaoke-nights/due
+ * endpoint partitions due nights into three buckets:
+ *   - t15: scheduled and within T-15m, never announced — post a heads-up
+ *     and flip announcedT15 so we don't double-fire.
+ *   - starting: scheduled and past startTime — post the "now live" ping and
+ *     flip status → live.
+ *   - endingLive: live for longer than the 4h cutoff — flip to ended and
+ *     post the recap embed.
+ * Channel/message lookups are best-effort; missing channels are warned and
+ * the API state still advances so we don't re-fire on the next tick.
+ */
+async function pollDueKaraokeNights(client: Client): Promise<void> {
+  let due;
+  try {
+    due = await api.dueKaraokeNights();
+  } catch (err) {
+    if (err instanceof ApiError) log.warn('dueKaraokeNights API error', { status: err.status });
+    return;
+  }
+
+  for (const night of due.t15) {
+    try {
+      const guild = client.guilds.cache.get(night.guildId);
+      if (!guild) continue;
+      const channelId = night.announceChannelId;
+      if (channelId) {
+        const channel = guild.channels.cache.get(channelId);
+        if (channel && channel.type === ChannelType.GuildText) {
+          await (channel as TextChannel)
+            .send({
+              content: `🎤 **${night.title}** starts <t:${Math.floor(
+                new Date(night.scheduledFor).getTime() / 1000,
+              )}:R> in <#${night.voiceChannelId}>. Host: <@${night.hostId}>`,
+              allowedMentions: { users: [night.hostId] },
+            })
+            .catch(() => undefined);
+        }
+      }
+      await api
+        .updateKaraokeNight(night.guildId, night.id, { announcedT15: true })
+        .catch(() => undefined);
+    } catch (err) {
+      log.warn('Karaoke T-15 ping failed', { id: night.id, err: String(err) });
+    }
+  }
+
+  for (const night of due.starting) {
+    try {
+      const guild = client.guilds.cache.get(night.guildId);
+      // Always flip status so we don't busy-loop the API even if the guild
+      // is no longer reachable.
+      await api
+        .updateKaraokeNight(night.guildId, night.id, { status: 'live' })
+        .catch(() => undefined);
+      if (!guild) continue;
+      const channelId = night.announceChannelId;
+      if (channelId) {
+        const channel = guild.channels.cache.get(channelId);
+        if (channel && channel.type === ChannelType.GuildText) {
+          await (channel as TextChannel)
+            .send({
+              content: `🎤 **${night.title}** is starting **now** in <#${night.voiceChannelId}>! Hop in 🎶`,
+              allowedMentions: { parse: [] },
+            })
+            .catch(() => undefined);
+        }
+      }
+    } catch (err) {
+      log.warn('Karaoke start ping failed', { id: night.id, err: String(err) });
+    }
+  }
+
+  for (const night of due.endingLive) {
+    try {
+      const guild = client.guilds.cache.get(night.guildId);
+      // Refresh so the recap reflects what actually played.
+      const detail = await api.getKaraokeNight(night.guildId, night.id).catch(() => null);
+      await api
+        .updateKaraokeNight(night.guildId, night.id, { status: 'ended' })
+        .catch(() => undefined);
+      if (!guild || !detail) continue;
+      const recapId = detail.recapChannelId ?? detail.announceChannelId;
+      if (!recapId) continue;
+      const recap = guild.channels.cache.get(recapId);
+      if (!recap || recap.type !== ChannelType.GuildText) continue;
+      const played = (detail.songs ?? []).filter((s) => s.playedAt);
+      const counts = detail.rsvpCounts ?? { yes: 0, maybe: 0, no: 0 };
+      const embed = new EmbedBuilder()
+        .setTitle(`🏁 Karaoke recap: ${detail.title}`)
+        .setColor(0x5865f2)
+        .setDescription(
+          [
+            `**Host:** <@${detail.hostId}>`,
+            `**Voice:** <#${detail.voiceChannelId}>`,
+            `**RSVPs:** ✅ ${counts.yes} · 🤔 ${counts.maybe} · ❌ ${counts.no}`,
+            `**Songs played:** ${played.length}`,
+          ].join('\n'),
+        )
+        .setTimestamp(new Date());
+      if (played.length) {
+        embed.addFields({
+          name: 'Set list',
+          value: played
+            .slice(0, 15)
+            .map((s, i) => `${i + 1}. ${s.title} — <@${s.submitterId}>`)
+            .join('\n'),
+        });
+      }
+      await (recap as TextChannel)
+        .send({ embeds: [embed], allowedMentions: { parse: [] } })
+        .catch(() => undefined);
+    } catch (err) {
+      log.warn('Karaoke recap failed', { id: night.id, err: String(err) });
+    }
   }
 }

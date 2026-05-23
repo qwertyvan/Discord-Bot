@@ -107,6 +107,59 @@ model Guild {
   linkDomains           LinkDomain[]
   onboardingForms       OnboardingForm[]
   applications          Application[]
+  karaokeNights         KaraokeNight[]
+}
+
+// Per-guild karaoke night — a host schedules it against a voice channel, the
+// bot announces at T-15m / T-now, and members submit songs in advance. The
+// host runs the queue live during the event.
+model KaraokeNight {
+  id                String    @id @default(uuid())
+  guildId           String
+  voiceChannelId    String
+  hostId            String
+  title             String    @db.VarChar(120)
+  scheduledFor      DateTime
+  status            String    @default("scheduled") @db.VarChar(16) // scheduled|live|ended|cancelled
+  announceChannelId String?
+  recapChannelId    String?
+  announcedT15      Boolean   @default(false)
+  startedAt         DateTime?
+  endedAt           DateTime?
+  createdAt         DateTime  @default(now())
+
+  guild Guild         @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  songs KaraokeSong[]
+  rsvps KaraokeRsvp[]
+
+  @@index([guildId, status, scheduledFor])
+}
+
+model KaraokeSong {
+  id          String    @id @default(uuid())
+  nightId     String
+  submitterId String
+  title       String    @db.VarChar(200)
+  url         String?   @db.VarChar(2048)
+  notes       String?   @db.VarChar(500)
+  playedAt    DateTime?
+  position    Int
+  createdAt   DateTime  @default(now())
+
+  night KaraokeNight @relation(fields: [nightId], references: [id], onDelete: Cascade)
+
+  @@index([nightId, position])
+}
+
+model KaraokeRsvp {
+  nightId String
+  userId  String
+  status  String   @db.VarChar(8) // yes|maybe|no
+  rsvpAt  DateTime @default(now())
+
+  night KaraokeNight @relation(fields: [nightId], references: [id], onDelete: Cascade)
+
+  @@id([nightId, userId])
 }
 
 // Per-guild quote-board settings. `savePermission` gates who can right-click
