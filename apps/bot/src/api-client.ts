@@ -219,6 +219,12 @@ import type {
   UpsertPetNameInput,
   PetActionResult,
   TopFeederResponse,
+  ProfileBadge,
+  CreateProfileBadgeInput,
+  UserProfile,
+  UpsertUserProfileInput,
+  UserBadge,
+  GrantUserBadgeInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1677,4 +1683,27 @@ export const api = {
     }),
   tickServerPetDecay: () =>
     call<{ scanned: number; updated: number }>(`/server-pet/tick/decay`, { method: 'POST' }),
+  // ─── Profile customization (v0.53) ───────────────────────────────────
+  getUserProfile: (guildId: string, userId: string) =>
+    call<UserProfile>(`/guilds/${guildId}/profile/${userId}`),
+  upsertUserProfile: (guildId: string, userId: string, body: UpsertUserProfileInput) =>
+    call<UserProfile>(`/guilds/${guildId}/profile/${userId}`, { method: 'PUT', body }),
+  listProfileBadges: (guildId: string) =>
+    call<{ badges: ProfileBadge[] }>(`/guilds/${guildId}/profile-badges`),
+  createProfileBadge: (guildId: string, body: CreateProfileBadgeInput) =>
+    call<ProfileBadge>(`/guilds/${guildId}/profile-badges`, { method: 'POST', body }),
+  deleteProfileBadge: (guildId: string, slug: string) =>
+    call<void>(`/guilds/${guildId}/profile-badges/${encodeURIComponent(slug)}`, {
+      method: 'DELETE',
+    }),
+  grantUserBadge: (guildId: string, slug: string, body: GrantUserBadgeInput) =>
+    call<UserBadge>(`/guilds/${guildId}/profile-badges/${encodeURIComponent(slug)}/grant`, {
+      method: 'POST',
+      body,
+    }),
+  revokeUserBadge: (guildId: string, slug: string, userId: string) =>
+    call<void>(
+      `/guilds/${guildId}/profile-badges/${encodeURIComponent(slug)}/users/${userId}`,
+      { method: 'DELETE' },
+    ),
 };

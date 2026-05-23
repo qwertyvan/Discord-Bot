@@ -8,6 +8,7 @@ import { customCommand } from './custom-command.js';
 import { help } from './help.js';
 import { poll } from './poll.js';
 import { preview } from './preview.js';
+import { profile } from './profile.js';
 import { remindme } from './remindme.js';
 import { reminders } from './reminders.js';
 import { roles } from './roles.js';
@@ -35,6 +36,7 @@ export const utilityCommands = [
   autoresponse,
   time,
   preview,
+  profile,
   translate,
   shorten,
   customCommand,
