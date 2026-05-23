@@ -48,6 +48,7 @@ const APPEAL_SLA_TICK_MS = 60 * 60_000; // hourly
 const MILESTONES_TICK_MS = 24 * 60 * 60_000; // daily
 const PET_DECAY_TICK_MS = 60 * 60_000; // hourly
 const QUESTS_TICK_MS = 60 * 60_000; // hourly
+const MARKETPLACE_TICK_MS = 60 * 60_000; // hourly
 
 const HEARTBEAT_TICK_MS = 30_000;
 
@@ -99,6 +100,7 @@ export function startScheduler(client: Client): void {
   setInterval(() => tick('milestones', () => sweepMemberMilestones(client))().catch(noop), MILESTONES_TICK_MS);
   setInterval(() => tick('karaoke', () => pollDueKaraokeNights(client))().catch(noop), KARAOKE_TICK_MS);
   setInterval(() => tick('pet-decay', () => decayServerPets())().catch(noop), PET_DECAY_TICK_MS);
+  setInterval(() => tick('marketplace', () => sweepExpiredListings())().catch(noop), MARKETPLACE_TICK_MS);
   setInterval(() => sendHeartbeat().catch(noop), HEARTBEAT_TICK_MS);
   setTimeout(() => {
     sendHeartbeat().catch(noop);
@@ -125,6 +127,7 @@ export function startScheduler(client: Client): void {
     tick('milestones', () => sweepMemberMilestones(client))().catch(noop);
     tick('karaoke', () => pollDueKaraokeNights(client))().catch(noop);
     tick('pet-decay', () => decayServerPets())().catch(noop);
+    tick('marketplace', () => sweepExpiredListings())().catch(noop);
   }, 5_000);
 }
 
@@ -133,6 +136,19 @@ async function decayServerPets(): Promise<void> {
     await api.tickServerPetDecay();
   } catch (err) {
     if (err instanceof ApiError) log.warn('tickServerPetDecay API error', { status: err.status });
+  }
+}
+
+async function sweepExpiredListings(): Promise<void> {
+  try {
+    const { expired } = await api.sweepExpiredListings();
+    if (expired.length > 0) {
+      log.info('marketplace: expired listings', { count: expired.length });
+    }
+  } catch (err) {
+    if (err instanceof ApiError) {
+      log.warn('sweepExpiredListings API error', { status: err.status });
+    }
   }
 }
 

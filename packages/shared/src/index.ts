@@ -52,3 +52,4 @@ export * from './link-safety.js';
 export * from './karaoke.js';
 export * from './profile.js';
 export * from './achievements.js';
+export * from './marketplace.js';

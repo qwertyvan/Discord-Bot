@@ -8,6 +8,7 @@ import { gamble } from './gamble.js';
 import { gift } from './gift.js';
 import { inventory } from './inventory.js';
 import { loot } from './loot.js';
+import { market } from './market.js';
 import { pay } from './pay.js';
 import { shop } from './shop.js';
 import { slots } from './slots.js';
@@ -30,4 +31,5 @@ export const economyCommands = [
   slots,
   dice,
   loot,
+  market,
 ];

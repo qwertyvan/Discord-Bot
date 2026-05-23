@@ -108,6 +108,8 @@ model Guild {
   onboardingForms       OnboardingForm[]
   applications          Application[]
   karaokeNights         KaraokeNight[]
+  marketConfig          MarketConfig?
+  marketListings        MarketListing[]
   questTemplates        QuestTemplate[]
   userQuests            UserQuest[]
   achievements          Achievement[]
@@ -1391,9 +1393,10 @@ model ShopItem {
   enabled     Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  guild     Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  inventory InventoryEntry[]
-  lootDrops LootDrop[]
+  guild          Guild            @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  inventory      InventoryEntry[]
+  lootDrops      LootDrop[]
+  marketListings MarketListing[]
 
   @@unique([guildId, slug])
   @@unique([guildId, name])
@@ -2237,4 +2240,43 @@ model UserQuest {
 
   @@unique([guildId, userId, templateId, periodStartedAt])
   @@index([guildId, userId, expiresAt])
+}
+
+// Peer-to-peer marketplace listings. A seller posts an item from their
+// inventory at a fixed price; the item moves into escrow (off the seller's
+// inventory row) until either a buyer claims it (status='sold'), the seller
+// cancels (status='cancelled'), or 7 days elapse (status='expired'). The
+// scheduler's hourly tick sweeps `expiresAt` and returns escrow items to the
+// original seller.
+model MarketListing {
+  id          String    @id @default(uuid())
+  guildId     String
+  sellerId    String
+  itemId      String
+  quantity    Int       @default(1)
+  priceCents  Int
+  listedAt    DateTime  @default(now())
+  expiresAt   DateTime
+  status      String    @default("active") @db.VarChar(16)
+  buyerId     String?
+  completedAt DateTime?
+
+  guild Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  item  ShopItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, status, listedAt])
+  @@index([guildId, sellerId])
+}
+
+// Per-guild marketplace config. Disabling the marketplace blocks new listing
+// creation but leaves existing listings intact (they continue to be claimable
+// until natural expiry). `minTenureDays` is the scam-guard floor: members
+// must have joined the server at least N days ago to post a listing.
+model MarketConfig {
+  guildId                  String  @id
+  enabled                  Boolean @default(true)
+  minTenureDays            Int     @default(1)
+  maxActiveListingsPerUser Int     @default(10)
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }

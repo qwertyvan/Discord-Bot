@@ -237,6 +237,11 @@ import type {
   UserAchievement,
   AwardAchievementInput,
   AwardAchievementResult,
+  MarketListing,
+  MarketConfig,
+  CreateListingInput,
+  UpsertMarketConfigInput,
+  MarketListingStatus,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1809,4 +1814,47 @@ export const api = {
     }>(`/guilds/${guildId}/user-quests/${id}/claim`, { method: 'POST' }),
   expireUserQuests: () =>
     call<{ deleted: number }>(`/quests/expire`, { method: 'POST' }),
+  // ─── Peer-to-peer marketplace (v0.56) ───────────────────────────────
+  getMarketConfig: (guildId: string) =>
+    call<MarketConfig>(`/guilds/${guildId}/marketplace-config`),
+  upsertMarketConfig: (guildId: string, body: UpsertMarketConfigInput) =>
+    call<MarketConfig>(`/guilds/${guildId}/marketplace-config`, {
+      method: 'PUT',
+      body,
+    }),
+  listListings: (
+    guildId: string,
+    query?: {
+      status?: MarketListingStatus;
+      sellerId?: string;
+      itemSlug?: string;
+      limit?: number;
+    },
+  ) =>
+    call<{ listings: MarketListing[] }>(`/guilds/${guildId}/listings`, {
+      query: {
+        ...(query?.status ? { status: query.status } : {}),
+        ...(query?.sellerId ? { sellerId: query.sellerId } : {}),
+        ...(query?.itemSlug ? { itemSlug: query.itemSlug } : {}),
+        ...(query?.limit !== undefined ? { limit: query.limit } : {}),
+      },
+    }),
+  getListing: (guildId: string, id: string) =>
+    call<MarketListing>(`/guilds/${guildId}/listings/${id}`),
+  createListing: (guildId: string, body: CreateListingInput) =>
+    call<MarketListing>(`/guilds/${guildId}/listings`, { method: 'POST', body }),
+  buyListing: (guildId: string, id: string, buyerId: string) =>
+    call<MarketListing>(`/guilds/${guildId}/listings/${id}/buy`, {
+      method: 'POST',
+      body: { buyerId },
+    }),
+  cancelListing: (guildId: string, id: string, requesterId: string) =>
+    call<MarketListing>(`/guilds/${guildId}/listings/${id}/cancel`, {
+      method: 'POST',
+      body: { requesterId },
+    }),
+  sweepExpiredListings: () =>
+    call<{ expired: MarketListing[] }>(`/marketplace/sweep-expired`, {
+      method: 'POST',
+    }),
 };
