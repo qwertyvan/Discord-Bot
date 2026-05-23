@@ -108,6 +108,8 @@ model Guild {
   onboardingForms       OnboardingForm[]
   applications          Application[]
   karaokeNights         KaraokeNight[]
+  achievements          Achievement[]
+  userAchievements      UserAchievement[]
   userProfiles          UserProfile[]
   profileBadges         ProfileBadge[]
   userBadges            UserBadge[]
@@ -2137,5 +2139,47 @@ model UserBadge {
   badge ProfileBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
 
   @@id([guildId, userId, badgeId])
+  @@index([guildId, userId])
+}
+
+// Per-guild achievement catalogue. `kind` selects the activity counter the
+// bot evaluates on relevant events (messages | voice_minutes | level |
+// reactions | stickers | custom). Custom achievements are only awarded via
+// explicit API/CLI calls.
+model Achievement {
+  id             String   @id @default(uuid())
+  guildId        String
+  slug           String   @db.VarChar(48)
+  name           String   @db.VarChar(80)
+  description    String   @db.VarChar(300)
+  emoji          String   @default("🏆") @db.VarChar(64)
+  kind           String   @db.VarChar(32)
+  threshold      Int      @default(1)
+  badgeSlug      String?
+  currencyReward Int      @default(0)
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  guild            Guild             @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userAchievements UserAchievement[]
+
+  @@unique([guildId, slug])
+  @@index([guildId, kind, enabled])
+}
+
+// One row per (guild, user, achievement) when the user unlocks it. Acts as
+// the idempotency ledger — the evaluator skips any achievement already
+// present here.
+model UserAchievement {
+  guildId          String
+  userId           String
+  achievementId    String
+  unlockedAt       DateTime @default(now())
+  progressAtUnlock Int
+
+  guild       Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId, achievementId])
   @@index([guildId, userId])
 }

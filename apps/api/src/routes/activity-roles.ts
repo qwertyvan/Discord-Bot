@@ -358,4 +358,32 @@ export const activityRolesRoutes: FastifyPluginAsyncZod = async (app) => {
       return { members: rows.map(serializeActivity) };
     },
   );
+
+  // Single-member readback — used by the achievement evaluator on hot-path
+  // events to know cumulative messages/voiceMinutes without paging the DB.
+  app.get(
+    '/guilds/:guildId/member-activity/:userId',
+    {
+      preHandler: app.requireBot(),
+      schema: {
+        params: z.object({ guildId: SnowflakeSchema, userId: SnowflakeSchema }),
+      },
+    },
+    async (req) => {
+      const { guildId, userId } = req.params;
+      const row = await app.prisma.memberActivity.findUnique({
+        where: { guildId_userId: { guildId, userId } },
+      });
+      if (!row) {
+        return {
+          guildId,
+          userId,
+          messages: 0,
+          voiceMinutes: 0,
+          lastActiveAt: null as string | null,
+        };
+      }
+      return serializeActivity(row);
+    },
+  );
 };

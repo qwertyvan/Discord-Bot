@@ -225,6 +225,13 @@ import type {
   UpsertUserProfileInput,
   UserBadge,
   GrantUserBadgeInput,
+  Achievement,
+  AchievementKind,
+  CreateAchievementInput,
+  UpdateAchievementInput,
+  UserAchievement,
+  AwardAchievementInput,
+  AwardAchievementResult,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -968,6 +975,14 @@ export const api = {
         ...(query?.limit !== undefined ? { limit: query.limit } : {}),
       },
     }),
+  getMemberActivity: (guildId: string, userId: string) =>
+    call<{
+      guildId: string;
+      userId: string;
+      messages: number;
+      voiceMinutes: number;
+      lastActiveAt: string | null;
+    }>(`/guilds/${guildId}/member-activity/${userId}`),
 
   // ─── Minigames: trivia ───────────────────────────────────────────
   listTriviaQuestions: (guildId: string, query?: { category?: string; limit?: number }) =>
@@ -1705,5 +1720,57 @@ export const api = {
     call<void>(
       `/guilds/${guildId}/profile-badges/${encodeURIComponent(slug)}/users/${userId}`,
       { method: 'DELETE' },
+    ),
+
+  // ─── Achievements (v0.54) ─────────────────────────────────────────────
+  listAchievements: (
+    guildId: string,
+    opts?: { kind?: AchievementKind; enabled?: boolean },
+  ) =>
+    call<{ achievements: Achievement[] }>(`/guilds/${guildId}/achievements`, {
+      query: {
+        ...(opts?.kind ? { kind: opts.kind } : {}),
+        ...(opts?.enabled !== undefined ? { enabled: String(opts.enabled) } : {}),
+      },
+    }),
+  createAchievement: (guildId: string, body: CreateAchievementInput) =>
+    call<Achievement>(`/guilds/${guildId}/achievements`, { method: 'POST', body }),
+  updateAchievement: (
+    guildId: string,
+    achievementId: string,
+    body: UpdateAchievementInput,
+  ) =>
+    call<Achievement>(`/guilds/${guildId}/achievements/${achievementId}`, {
+      method: 'PATCH',
+      body,
+    }),
+  deleteAchievement: (guildId: string, achievementId: string) =>
+    call<void>(`/guilds/${guildId}/achievements/${achievementId}`, { method: 'DELETE' }),
+  deleteAchievementBySlug: (guildId: string, slug: string) =>
+    call<void>(`/guilds/${guildId}/achievements/by-slug/${encodeURIComponent(slug)}`, {
+      method: 'DELETE',
+    }),
+  listUserAchievements: (
+    guildId: string,
+    opts?: { userId?: string; limit?: number },
+  ) =>
+    call<{ userAchievements: UserAchievement[] }>(
+      `/guilds/${guildId}/user-achievements`,
+      {
+        query: {
+          ...(opts?.userId ? { userId: opts.userId } : {}),
+          ...(opts?.limit !== undefined ? { limit: opts.limit } : {}),
+        },
+      },
+    ),
+  awardUserAchievement: (guildId: string, body: AwardAchievementInput) =>
+    call<AwardAchievementResult>(`/guilds/${guildId}/user-achievements/award`, {
+      method: 'POST',
+      body,
+    }),
+  seedAchievements: (guildId: string) =>
+    call<{ inserted: number; skipped: number; achievements: Achievement[] }>(
+      `/guilds/${guildId}/achievements/seed`,
+      { method: 'POST' },
     ),
 };

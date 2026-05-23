@@ -1,3 +1,4 @@
+import { achievements } from './achievements.js';
 import { autoresponse } from './autoresponse.js';
 import { avatar } from './avatar.js';
 import { banner } from './banner.js';
@@ -42,4 +43,5 @@ export const utilityCommands = [
   customCommand,
   counter,
   color,
+  achievements,
 ];
