@@ -114,6 +114,10 @@ export function registerInteractionCreate(client: Client): void {
           await handleKaraokeAddModal(interaction);
           return;
         }
+        if (interaction.customId.startsWith('profile-edit-modal:')) {
+          await handleProfileEditModal(interaction);
+          return;
+        }
       }
 
       if (interaction.isButton()) {
@@ -965,6 +969,62 @@ async function handleBlackjackButton(interaction: ButtonInteraction): Promise<vo
     } else {
       await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
     }
+  }
+}
+
+async function handleProfileEditModal(interaction: ModalSubmitInteraction): Promise<void> {
+  if (!interaction.inGuild() || !interaction.guildId) return;
+  // customId is "profile-edit-modal:<userId>". We treat the userId as
+  // advisory and re-check that it matches the submitter so a stale modal
+  // can't write to someone else's profile.
+  const expectedUserId = interaction.customId.slice('profile-edit-modal:'.length);
+  if (expectedUserId !== interaction.user.id) {
+    await interaction.reply({
+      content: 'This profile editor belongs to a different user.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const bioRaw = interaction.fields.getTextInputValue('bio').trim();
+  const accentRaw = interaction.fields.getTextInputValue('accentColor').trim();
+  const quoteRaw = interaction.fields.getTextInputValue('favoriteQuote').trim();
+
+  // Validate accent: empty string clears the field; otherwise must match
+  // #RRGGBB. We don't try to normalize 3-digit shorthand — easier to reject
+  // and let the user retype.
+  let accentColor: string | null | undefined;
+  if (accentRaw === '') {
+    accentColor = null;
+  } else if (/^#[0-9a-fA-F]{6}$/u.test(accentRaw)) {
+    accentColor = accentRaw.toUpperCase().replace(/^#([0-9A-F]{6})$/, '#$1');
+  } else {
+    await interaction.editReply(
+      'Accent color must be in `#RRGGBB` form (e.g. `#5865F2`). Leave it blank to clear.',
+    );
+    return;
+  }
+
+  // For bio/quote: empty string clears the field. We always include the key
+  // so the upsert PUT acts like a full replace from the modal's perspective.
+  const body: {
+    bio: string | null;
+    favoriteQuote: string | null;
+    accentColor: string | null;
+  } = {
+    bio: bioRaw === '' ? null : bioRaw,
+    favoriteQuote: quoteRaw === '' ? null : quoteRaw,
+    accentColor: accentColor ?? null,
+  };
+
+  try {
+    await api.upsertUserProfile(interaction.guildId, interaction.user.id, body);
+    await interaction.editReply('✅ Profile updated.');
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : 'Failed to update profile.';
+    await interaction.editReply(msg);
   }
 }
 

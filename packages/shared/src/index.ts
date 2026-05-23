@@ -49,3 +49,4 @@ export * from './webhooks-out.js';
 export * from './invites.js';
 export * from './link-safety.js';
 export * from './karaoke.js';
+export * from './profile.js';

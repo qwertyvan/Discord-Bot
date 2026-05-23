@@ -102,6 +102,32 @@ export const userinfo: SlashCommand = {
           // ignore — economy not configured
         }
       }
+
+      // Profile augmentation (v0.53). The /profile API always returns a
+      // payload (blank if the user hasn't customized anything), so we only
+      // surface fields that are actually populated. Wrapped in try/catch so
+      // older API deployments without the route just skip the augmentation.
+      try {
+        const prof = await api.getUserProfile(member.guild.id, member.id);
+        if (prof.bio) {
+          embed.addFields({ name: 'Bio', value: prof.bio, inline: false });
+        }
+        if (prof.badges.length > 0) {
+          const visible = prof.badges.slice(0, 5);
+          const overflow = prof.badges.length - visible.length;
+          embed.addFields({
+            name: `Badges (${prof.badges.length})`,
+            value:
+              visible.map((b) => `${b.badge.emoji} ${b.badge.name}`).join('  ') +
+              (overflow > 0 ? `  +${overflow}` : ''),
+            inline: false,
+          });
+        }
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 404) {
+          // ignore — profile route absent in older API deployments
+        }
+      }
     }
 
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });

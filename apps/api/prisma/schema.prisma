@@ -108,6 +108,9 @@ model Guild {
   onboardingForms       OnboardingForm[]
   applications          Application[]
   karaokeNights         KaraokeNight[]
+  userProfiles          UserProfile[]
+  profileBadges         ProfileBadge[]
+  userBadges            UserBadge[]
   serverPet             ServerPet?
   petInteractions       PetInteraction[]
 }
@@ -2082,4 +2085,57 @@ model PetInteraction {
 
   @@index([guildId, userId, at])
   @@index([guildId, at])
+}
+
+// Per-(guild,user) profile customization. Stores the user's bio (markdown),
+// chosen accent color (#RRGGBB) used to tint the /profile and /userinfo
+// embeds, and a favorite quote line. Badges are tracked separately via
+// UserBadge so they can be awarded by mods or unlocked via achievements.
+model UserProfile {
+  guildId       String
+  userId        String
+  bio           String?  @db.VarChar(400)
+  accentColor   String?  @db.VarChar(7)
+  favoriteQuote String?  @db.VarChar(200)
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId])
+}
+
+// A badge that can be awarded to members in a guild. Slug is the stable
+// identifier used by slash commands; name/emoji/description drive how the
+// badge is rendered on the profile card.
+model ProfileBadge {
+  id          String   @id @default(uuid())
+  guildId     String
+  slug        String   @db.VarChar(48)
+  name        String   @db.VarChar(64)
+  emoji       String   @db.VarChar(64)
+  description String?  @db.VarChar(200)
+  createdAt   DateTime @default(now())
+
+  guild      Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userBadges UserBadge[]
+
+  @@unique([guildId, slug])
+  @@index([guildId])
+}
+
+// Join table: a badge awarded to a specific (guild,user). `awardedBy` is the
+// moderator's user id when granted via slash command; null when awarded by
+// an automated system (e.g. achievements).
+model UserBadge {
+  guildId    String
+  userId     String
+  badgeId    String
+  awardedAt  DateTime @default(now())
+  awardedBy  String?
+
+  guild Guild        @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  badge ProfileBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@id([guildId, userId, badgeId])
+  @@index([guildId, userId])
 }
