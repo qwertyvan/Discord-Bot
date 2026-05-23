@@ -252,6 +252,16 @@ import type {
   CreateFishingDropInput,
   FishingCast,
   CastResult,
+  BattlePet,
+  BattleLeaderboardEntry,
+  CreateDuelInput,
+  DuelMatch,
+  DuelMove,
+  DuelMoveResult,
+  DuelStatus,
+  RespondDuelInput,
+  UpsertBattlePetNameInput,
+  AllocateStatsInput,
 } from '@discord-bot/shared';
 
 export class ApiError extends Error {
@@ -1930,4 +1940,73 @@ export const api = {
       method: 'POST',
       body: limit !== undefined ? { limit } : undefined,
     }),
+  // ─── Duels & pet battles (v0.59) ─────────────────────────────────────
+  getBattlePet: (guildId: string, userId: string) =>
+    call<BattlePet>(`/guilds/${guildId}/battle-pets/${userId}`),
+  renameBattlePet: (guildId: string, userId: string, body: UpsertBattlePetNameInput) =>
+    call<BattlePet>(`/guilds/${guildId}/battle-pets/${userId}`, {
+      method: 'PATCH',
+      body,
+    }),
+  allocateBattleStats: (
+    guildId: string,
+    userId: string,
+    body: AllocateStatsInput,
+  ) =>
+    call<BattlePet>(`/guilds/${guildId}/battle-pets/${userId}`, {
+      method: 'PATCH',
+      body,
+    }),
+  listDuels: (
+    guildId: string,
+    query?: { status?: DuelStatus; participant?: string; limit?: number },
+  ) =>
+    call<{
+      matches: Array<{
+        id: string;
+        guildId: string;
+        challengerId: string;
+        opponentId: string;
+        status: DuelStatus;
+        turn: number;
+        currentActorId: string | null;
+        winnerId: string | null;
+        createdAt: string;
+        endedAt: string | null;
+      }>;
+    }>(`/guilds/${guildId}/duels`, {
+      query: {
+        ...(query?.status ? { status: query.status } : {}),
+        ...(query?.participant ? { participant: query.participant } : {}),
+        ...(query?.limit !== undefined ? { limit: query.limit } : {}),
+      },
+    }),
+  getDuel: (guildId: string, id: string) =>
+    call<DuelMatch>(`/guilds/${guildId}/duels/${id}`),
+  createDuel: (guildId: string, body: CreateDuelInput) =>
+    call<DuelMatch>(`/guilds/${guildId}/duels`, { method: 'POST', body }),
+  respondDuel: (guildId: string, id: string, body: RespondDuelInput) =>
+    call<DuelMatch>(`/guilds/${guildId}/duels/${id}/respond`, {
+      method: 'POST',
+      body,
+    }),
+  duelMove: (
+    guildId: string,
+    id: string,
+    body: { userId: string; move: DuelMove },
+  ) =>
+    call<DuelMoveResult>(`/guilds/${guildId}/duels/${id}/move`, {
+      method: 'POST',
+      body,
+    }),
+  forfeitDuel: (guildId: string, id: string, userId: string) =>
+    call<DuelMoveResult>(`/guilds/${guildId}/duels/${id}/forfeit`, {
+      method: 'POST',
+      body: { userId },
+    }),
+  battleLeaderboard: (guildId: string, limit = 10) =>
+    call<{ entries: BattleLeaderboardEntry[] }>(
+      `/guilds/${guildId}/battle-leaderboard`,
+      { query: { limit } },
+    ),
 };
